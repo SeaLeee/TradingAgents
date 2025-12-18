@@ -13,6 +13,15 @@ class FinancialSituationMemory:
             # Use Google's embedding
             self.embedding = "models/text-embedding-004"
             self.client = None  # Will use google-genai directly
+        elif self.llm_provider == "openrouter":
+            # OpenRouter supports OpenAI-compatible embeddings
+            self.embedding = "text-embedding-3-small"
+            openrouter_key = os.environ.get("OPENROUTER_API_KEY")
+            if openrouter_key:
+                # Use OpenAI API directly for embeddings (OpenRouter may not support all embedding models)
+                self.client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY", openrouter_key))
+            else:
+                self.client = OpenAI()
         elif config["backend_url"] == "http://localhost:11434/v1":
             self.embedding = "nomic-embed-text"
             self.client = OpenAI(base_url=config["backend_url"])

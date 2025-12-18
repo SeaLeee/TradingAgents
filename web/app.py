@@ -132,6 +132,18 @@ def run_analysis_sync(task_id: str, request: AnalysisRequest):
         config["max_debate_rounds"] = request.max_debate_rounds
         config["max_risk_discuss_rounds"] = request.max_debate_rounds
         
+        # Set backend_url based on LLM provider
+        if config["llm_provider"] == "openrouter":
+            config["backend_url"] = "https://openrouter.ai/api/v1"
+            # OpenRouter uses OPENROUTER_API_KEY, need to set OPENAI_API_KEY for ChatOpenAI
+            openrouter_key = os.getenv("OPENROUTER_API_KEY")
+            if openrouter_key:
+                os.environ["OPENAI_API_KEY"] = openrouter_key
+        elif config["llm_provider"] == "openai":
+            config["backend_url"] = "https://api.openai.com/v1"
+        elif config["llm_provider"] == "ollama":
+            config["backend_url"] = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434/v1")
+        
         # Initialize graph
         analysis_tasks[task_id]["progress"] = "Setting up trading agents..."
         graph = TradingAgentsGraph(request.analysts, config=config, debug=False)
