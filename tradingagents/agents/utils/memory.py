@@ -1,25 +1,54 @@
 import chromadb
 from chromadb.config import Settings
 from openai import OpenAI
+import os
 
 
 class FinancialSituationMemory:
     def __init__(self, name, config):
-        if config["backend_url"] == "http://localhost:11434/v1":
+        self.config = config
+        self.llm_provider = config.get("llm_provider", "openai").lower()
+        
+        if self.llm_provider == "google":
+            # Use Google's embedding
+            self.embedding = "models/text-embedding-004"
+            self.client = None  # Will use google-genai directly
+        elif config["backend_url"] == "http://localhost:11434/v1":
             self.embedding = "nomic-embed-text"
+            self.client = OpenAI(base_url=config["backend_url"])
         else:
             self.embedding = "text-embedding-3-small"
-        self.client = OpenAI(base_url=config["backend_url"])
+            self.client = OpenAI(base_url=config["backend_url"])
+        
         self.chroma_client = chromadb.Client(Settings(allow_reset=True))
         self.situation_collection = self.chroma_client.create_collection(name=name)
 
     def get_embedding(self, text):
-        """Get OpenAI embedding for a text"""
+        """Get embedding for a text based on the LLM provider"""
         
-        response = self.client.embeddings.create(
-            model=self.embedding, input=text
-        )
-        return response.data[0].embedding
+        if self.llm_provider == "google":
+            # Use Google's embedding API
+            try:
+                from google import genai
+                
+                api_key = os.environ.get("GOOGLE_API_KEY") or os.environ.get("GEMINI_API_KEY")
+                if not api_key:
+                    raise ValueError("GOOGLE_API_KEY or GEMINI_API_KEY environment variable not set")
+                
+                client = genai.Client(api_key=api_key)
+                response = client.models.embed_content(
+                    model=self.embedding,
+                    contents=text
+                )
+                return response.embeddings[0].values
+            except ImportError:
+                raise ImportError("google-genai package is required for Google embeddings. Install with: pip install google-genai")
+        else:
+            # Use OpenAI-compatible embedding
+            response = self.client.embeddings.create(
+                model=self.embedding, input=text
+            )
+            return response.data[0].embedding
 
     def add_situations(self, situations_and_advice):
         """Add financial situations and their corresponding advice. Parameter is a list of tuples (situation, rec)"""

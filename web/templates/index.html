@@ -1,0 +1,373 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TradingAgents - AI Trading Analysis</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Inter', sans-serif; }
+        .gradient-bg {
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+        }
+        .card {
+            background: rgba(255, 255, 255, 0.05);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        .pulse-dot {
+            animation: pulse 2s infinite;
+        }
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+        .markdown-content h1 { font-size: 1.5rem; font-weight: bold; margin-top: 1rem; }
+        .markdown-content h2 { font-size: 1.25rem; font-weight: bold; margin-top: 0.75rem; }
+        .markdown-content h3 { font-size: 1.1rem; font-weight: 600; margin-top: 0.5rem; }
+        .markdown-content p { margin: 0.5rem 0; }
+        .markdown-content ul { list-style: disc; margin-left: 1.5rem; }
+        .markdown-content li { margin: 0.25rem 0; }
+    </style>
+</head>
+<body class="gradient-bg text-white min-h-screen">
+    <div class="container mx-auto px-4 py-8 max-w-6xl">
+        <!-- Header -->
+        <header class="text-center mb-12 relative">
+            <!-- Logout Button -->
+            <a href="/logout" class="absolute right-0 top-0 bg-gray-700 hover:bg-gray-600 text-gray-300 px-4 py-2 rounded-lg text-sm flex items-center space-x-2 transition-colors">
+                <span>🚪</span>
+                <span>Logout</span>
+            </a>
+            
+            <h1 class="text-5xl font-bold mb-4">
+                🤖 <span class="bg-gradient-to-r from-blue-400 to-purple-500 bg-clip-text text-transparent">TradingAgents</span>
+            </h1>
+            <p class="text-gray-400 text-lg">Multi-Agent LLM Financial Trading Framework</p>
+            <p class="text-gray-500 text-sm mt-2">
+                Analyst Team → Research Team → Trader → Risk Management → Portfolio Management
+            </p>
+        </header>
+
+        <!-- Main Content -->
+        <div class="grid lg:grid-cols-3 gap-8">
+            <!-- Configuration Panel -->
+            <div class="lg:col-span-1">
+                <div class="card rounded-2xl p-6 sticky top-8">
+                    <h2 class="text-xl font-semibold mb-6 flex items-center">
+                        <span class="mr-2">⚙️</span> Configuration
+                    </h2>
+                    
+                    <form id="analysisForm" class="space-y-5">
+                        <!-- Ticker -->
+                        <div>
+                            <label class="block text-sm font-medium text-gray-300 mb-2">Stock Ticker</label>
+                            <input type="text" id="ticker" value="NVDA" 
+                                class="w-full bg-gray-800 border border-gray-700 rounded-lg px-4 py-2.5 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                                placeholder="e.g., AAPL, NVDA, META">
+                        </div>
+
+                        <!-- Date -->
+                        <div>
+                            <label class="block text-sm font-medium text-gray-300 mb-2">Analysis Date</label>
+                            <input type="date" id="date" 
+                                class="w-full bg-gray-800 border border-gray-700 rounded-lg px-4 py-2.5 focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+                        </div>
+
+                        <!-- LLM Provider -->
+                        <div>
+                            <label class="block text-sm font-medium text-gray-300 mb-2">LLM Provider</label>
+                            <select id="llmProvider" 
+                                class="w-full bg-gray-800 border border-gray-700 rounded-lg px-4 py-2.5 focus:ring-2 focus:ring-blue-500">
+                                <option value="google">Google (Gemini)</option>
+                                <option value="openai">OpenAI</option>
+                                <option value="anthropic">Anthropic (Claude)</option>
+                                <option value="openrouter">OpenRouter (Free)</option>
+                                <option value="ollama">Ollama (Local)</option>
+                            </select>
+                        </div>
+
+                        <!-- Quick Think Model -->
+                        <div>
+                            <label class="block text-sm font-medium text-gray-300 mb-2">Quick-Think Model</label>
+                            <select id="quickModel" 
+                                class="w-full bg-gray-800 border border-gray-700 rounded-lg px-4 py-2.5 focus:ring-2 focus:ring-blue-500">
+                            </select>
+                        </div>
+
+                        <!-- Deep Think Model -->
+                        <div>
+                            <label class="block text-sm font-medium text-gray-300 mb-2">Deep-Think Model</label>
+                            <select id="deepModel" 
+                                class="w-full bg-gray-800 border border-gray-700 rounded-lg px-4 py-2.5 focus:ring-2 focus:ring-blue-500">
+                            </select>
+                        </div>
+
+                        <!-- Analysts -->
+                        <div>
+                            <label class="block text-sm font-medium text-gray-300 mb-2">Analysts</label>
+                            <div class="grid grid-cols-2 gap-2">
+                                <label class="flex items-center space-x-2 bg-gray-800 rounded-lg px-3 py-2 cursor-pointer hover:bg-gray-700">
+                                    <input type="checkbox" value="market" checked class="analyst-checkbox rounded">
+                                    <span class="text-sm">📊 Market</span>
+                                </label>
+                                <label class="flex items-center space-x-2 bg-gray-800 rounded-lg px-3 py-2 cursor-pointer hover:bg-gray-700">
+                                    <input type="checkbox" value="news" checked class="analyst-checkbox rounded">
+                                    <span class="text-sm">📰 News</span>
+                                </label>
+                                <label class="flex items-center space-x-2 bg-gray-800 rounded-lg px-3 py-2 cursor-pointer hover:bg-gray-700">
+                                    <input type="checkbox" value="fundamentals" checked class="analyst-checkbox rounded">
+                                    <span class="text-sm">📈 Fundamentals</span>
+                                </label>
+                                <label class="flex items-center space-x-2 bg-gray-800 rounded-lg px-3 py-2 cursor-pointer hover:bg-gray-700">
+                                    <input type="checkbox" value="social" checked class="analyst-checkbox rounded">
+                                    <span class="text-sm">💬 Social</span>
+                                </label>
+                            </div>
+                        </div>
+
+                        <!-- Submit Button -->
+                        <button type="submit" id="submitBtn"
+                            class="w-full bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700 text-white font-semibold py-3 px-6 rounded-lg transition-all duration-200 flex items-center justify-center space-x-2">
+                            <span>🚀</span>
+                            <span>Start Analysis</span>
+                        </button>
+                    </form>
+                </div>
+            </div>
+
+            <!-- Results Panel -->
+            <div class="lg:col-span-2">
+                <!-- Status -->
+                <div id="statusCard" class="card rounded-2xl p-6 mb-6 hidden">
+                    <div class="flex items-center space-x-4">
+                        <div id="statusIndicator" class="w-4 h-4 rounded-full bg-yellow-500 pulse-dot"></div>
+                        <div>
+                            <h3 class="font-semibold" id="statusTitle">Processing...</h3>
+                            <p class="text-gray-400 text-sm" id="statusMessage">Initializing agents...</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Results -->
+                <div id="resultsContainer" class="space-y-6 hidden">
+                    <!-- Decision Card -->
+                    <div class="card rounded-2xl p-6">
+                        <h2 class="text-xl font-semibold mb-4 flex items-center">
+                            <span class="mr-2">🎯</span> Trading Decision
+                        </h2>
+                        <div id="decisionContent" class="bg-gray-800 rounded-lg p-4 markdown-content">
+                            <!-- Decision will be inserted here -->
+                        </div>
+                    </div>
+
+                    <!-- Reports Accordion -->
+                    <div class="card rounded-2xl p-6">
+                        <h2 class="text-xl font-semibold mb-4 flex items-center">
+                            <span class="mr-2">📋</span> Analysis Reports
+                        </h2>
+                        <div class="space-y-3" id="reportsAccordion">
+                            <!-- Reports will be inserted here -->
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Empty State -->
+                <div id="emptyState" class="card rounded-2xl p-12 text-center">
+                    <div class="text-6xl mb-4">📊</div>
+                    <h3 class="text-xl font-semibold mb-2">Ready to Analyze</h3>
+                    <p class="text-gray-400">Configure your analysis parameters and click "Start Analysis" to begin.</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Footer -->
+        <footer class="text-center mt-12 text-gray-500 text-sm">
+            <p>Built with TradingAgents Framework | 
+                <a href="/docs" class="text-blue-400 hover:underline">API Docs</a> |
+                <a href="https://github.com/TauricResearch/TradingAgents" class="text-blue-400 hover:underline">GitHub</a>
+            </p>
+            <p class="mt-2 text-xs">⚠️ This is for research purposes only. Not financial advice.</p>
+        </footer>
+    </div>
+
+    <script>
+        // Configuration data
+        let configData = null;
+
+        // Initialize
+        document.addEventListener('DOMContentLoaded', async () => {
+            // Set default date
+            document.getElementById('date').value = new Date().toISOString().split('T')[0];
+            
+            // Load config
+            try {
+                const response = await fetch('/api/config');
+                configData = await response.json();
+                updateModelOptions();
+            } catch (e) {
+                console.error('Failed to load config:', e);
+            }
+            
+            // Provider change handler
+            document.getElementById('llmProvider').addEventListener('change', updateModelOptions);
+        });
+
+        function updateModelOptions() {
+            const provider = document.getElementById('llmProvider').value;
+            const quickSelect = document.getElementById('quickModel');
+            const deepSelect = document.getElementById('deepModel');
+            
+            if (!configData || !configData.models[provider]) return;
+            
+            const models = configData.models[provider];
+            
+            quickSelect.innerHTML = models.quick.map(m => 
+                `<option value="${m}">${m}</option>`
+            ).join('');
+            
+            deepSelect.innerHTML = models.deep.map(m => 
+                `<option value="${m}">${m}</option>`
+            ).join('');
+        }
+
+        // Form submission
+        document.getElementById('analysisForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            const analysts = Array.from(document.querySelectorAll('.analyst-checkbox:checked'))
+                .map(cb => cb.value);
+            
+            if (analysts.length === 0) {
+                alert('Please select at least one analyst');
+                return;
+            }
+            
+            const request = {
+                ticker: document.getElementById('ticker').value.toUpperCase(),
+                date: document.getElementById('date').value,
+                llm_provider: document.getElementById('llmProvider').value,
+                quick_think_llm: document.getElementById('quickModel').value,
+                deep_think_llm: document.getElementById('deepModel').value,
+                analysts: analysts,
+                max_debate_rounds: 1
+            };
+            
+            // Start analysis
+            try {
+                document.getElementById('submitBtn').disabled = true;
+                document.getElementById('submitBtn').innerHTML = '<span class="animate-spin">⏳</span> Processing...';
+                
+                document.getElementById('emptyState').classList.add('hidden');
+                document.getElementById('statusCard').classList.remove('hidden');
+                document.getElementById('resultsContainer').classList.add('hidden');
+                
+                const response = await fetch('/api/analyze', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(request)
+                });
+                
+                const data = await response.json();
+                pollStatus(data.task_id);
+                
+            } catch (error) {
+                showError(error.message);
+            }
+        });
+
+        async function pollStatus(taskId) {
+            try {
+                const response = await fetch(`/api/status/${taskId}`);
+                const data = await response.json();
+                
+                updateStatus(data.status, data.progress);
+                
+                if (data.status === 'completed') {
+                    showResults(data.result);
+                    resetButton();
+                } else if (data.status === 'failed') {
+                    showError(data.error);
+                    resetButton();
+                } else {
+                    setTimeout(() => pollStatus(taskId), 2000);
+                }
+            } catch (error) {
+                showError(error.message);
+                resetButton();
+            }
+        }
+
+        function updateStatus(status, message) {
+            const indicator = document.getElementById('statusIndicator');
+            const title = document.getElementById('statusTitle');
+            const msg = document.getElementById('statusMessage');
+            
+            const colors = {
+                'pending': 'bg-yellow-500',
+                'running': 'bg-blue-500',
+                'completed': 'bg-green-500',
+                'failed': 'bg-red-500'
+            };
+            
+            indicator.className = `w-4 h-4 rounded-full ${colors[status] || 'bg-gray-500'} ${status === 'running' ? 'pulse-dot' : ''}`;
+            title.textContent = status.charAt(0).toUpperCase() + status.slice(1);
+            msg.textContent = message || '';
+        }
+
+        function showResults(result) {
+            document.getElementById('resultsContainer').classList.remove('hidden');
+            
+            // Decision
+            document.getElementById('decisionContent').innerHTML = formatMarkdown(result.decision || 'No decision available');
+            
+            // Reports
+            const reportsHtml = Object.entries(result.reports || {})
+                .filter(([_, content]) => content)
+                .map(([name, content]) => `
+                    <details class="bg-gray-800 rounded-lg">
+                        <summary class="px-4 py-3 cursor-pointer hover:bg-gray-700 rounded-lg font-medium">
+                            ${getReportIcon(name)} ${name.charAt(0).toUpperCase() + name.slice(1)} Report
+                        </summary>
+                        <div class="px-4 py-3 border-t border-gray-700 markdown-content text-sm text-gray-300">
+                            ${formatMarkdown(content)}
+                        </div>
+                    </details>
+                `).join('');
+            
+            document.getElementById('reportsAccordion').innerHTML = reportsHtml || '<p class="text-gray-400">No reports available</p>';
+        }
+
+        function getReportIcon(name) {
+            const icons = {
+                'market': '📊',
+                'sentiment': '💬',
+                'news': '📰',
+                'fundamentals': '📈'
+            };
+            return icons[name] || '📋';
+        }
+
+        function formatMarkdown(text) {
+            if (!text) return '';
+            return text
+                .replace(/\n/g, '<br>')
+                .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+                .replace(/\*(.*?)\*/g, '<em>$1</em>')
+                .replace(/### (.*?)(<br>|$)/g, '<h3>$1</h3>')
+                .replace(/## (.*?)(<br>|$)/g, '<h2>$1</h2>')
+                .replace(/# (.*?)(<br>|$)/g, '<h1>$1</h1>');
+        }
+
+        function showError(message) {
+            updateStatus('failed', message);
+        }
+
+        function resetButton() {
+            document.getElementById('submitBtn').disabled = false;
+            document.getElementById('submitBtn').innerHTML = '<span>🚀</span><span>Start Analysis</span>';
+        }
+    </script>
+</body>
+</html>
