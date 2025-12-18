@@ -6,6 +6,23 @@ import hashlib
 import numpy as np
 
 
+# Global cache for sentence transformer model (load once)
+_sentence_transformer_model = None
+
+
+def get_sentence_transformer():
+    """Lazy load sentence transformer model."""
+    global _sentence_transformer_model
+    if _sentence_transformer_model is None:
+        try:
+            from sentence_transformers import SentenceTransformer
+            # Use a lightweight but effective model
+            _sentence_transformer_model = SentenceTransformer('all-MiniLM-L6-v2')
+        except ImportError:
+            return None
+    return _sentence_transformer_model
+
+
 class FinancialSituationMemory:
     def __init__(self, name, config):
         self.config = config
@@ -16,15 +33,15 @@ class FinancialSituationMemory:
             self.embedding = "models/text-embedding-004"
             self.client = None  # Will use google-genai directly
         elif self.llm_provider == "openrouter":
-            # OpenRouter - use simple hash-based embedding
+            # OpenRouter - use local sentence-transformers
             self.embedding = None
             self.client = None
-            self._use_hash_embedding = True
+            self._use_local_embedding = True
         elif self.llm_provider == "deepseek":
-            # DeepSeek - use simple hash-based embedding (DeepSeek doesn't have embedding API)
+            # DeepSeek - use local sentence-transformers
             self.embedding = None
             self.client = None
-            self._use_hash_embedding = True
+            self._use_local_embedding = True
         elif config["backend_url"] == "http://localhost:11434/v1":
             self.embedding = "nomic-embed-text"
             self.client = OpenAI(base_url=config["backend_url"])
@@ -53,12 +70,22 @@ class FinancialSituationMemory:
         embedding = embedding / np.linalg.norm(embedding)
         return embedding.tolist()
 
+    def _local_embedding(self, text):
+        """Use local sentence-transformers for embedding."""
+        model = get_sentence_transformer()
+        if model is not None:
+            embedding = model.encode(text, convert_to_numpy=True)
+            return embedding.tolist()
+        else:
+            # Fallback to hash-based if sentence-transformers not installed
+            return self._hash_embedding(text)
+
     def get_embedding(self, text):
         """Get embedding for a text based on the LLM provider"""
         
-        # Use hash-based embedding for providers without embedding API
-        if getattr(self, '_use_hash_embedding', False):
-            return self._hash_embedding(text)
+        # Use local embedding for providers without embedding API
+        if getattr(self, '_use_local_embedding', False):
+            return self._local_embedding(text)
         
         if self.llm_provider == "google" or self.client is None:
             # Use Google's embedding API

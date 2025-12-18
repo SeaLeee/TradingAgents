@@ -29,3 +29,4 @@ fastapi
 uvicorn
 python-dotenv
 python-multipart
+sentence-transformers
