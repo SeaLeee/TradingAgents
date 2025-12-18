@@ -758,6 +758,17 @@ def run_analysis():
             console.print("Please add OPENROUTER_API_KEY to your .env file")
             console.print("Get your key at: https://openrouter.ai/keys")
             return
+    
+    # Set API key for DeepSeek (ChatOpenAI looks for OPENAI_API_KEY)
+    if config["llm_provider"] == "deepseek":
+        deepseek_key = os.environ.get("DEEPSEEK_API_KEY")
+        if deepseek_key:
+            os.environ["OPENAI_API_KEY"] = deepseek_key
+        else:
+            console.print("[red]Error: DEEPSEEK_API_KEY not set in environment![/red]")
+            console.print("Please add DEEPSEEK_API_KEY to your .env file")
+            console.print("Get your key at: https://platform.deepseek.com/api_keys")
+            return
 
     # Initialize the graph
     graph = TradingAgentsGraph(

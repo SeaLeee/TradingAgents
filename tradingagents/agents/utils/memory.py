@@ -22,6 +22,17 @@ class FinancialSituationMemory:
                 self.client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY", openrouter_key))
             else:
                 self.client = OpenAI()
+        elif self.llm_provider == "deepseek":
+            # DeepSeek doesn't have embeddings API, use OpenAI if available, otherwise use Google
+            self.embedding = "text-embedding-3-small"
+            openai_key = os.environ.get("OPENAI_API_KEY")
+            if openai_key:
+                self.client = OpenAI(api_key=openai_key, base_url="https://api.openai.com/v1")
+            else:
+                # Fallback to Google embeddings if no OpenAI key
+                self.embedding = "models/text-embedding-004"
+                self.client = None  # Will use google-genai
+                self.llm_provider = "google"  # Switch to google for embeddings
         elif config["backend_url"] == "http://localhost:11434/v1":
             self.embedding = "nomic-embed-text"
             self.client = OpenAI(base_url=config["backend_url"])

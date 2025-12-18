@@ -139,6 +139,12 @@ def run_analysis_sync(task_id: str, request: AnalysisRequest):
             openrouter_key = os.getenv("OPENROUTER_API_KEY")
             if openrouter_key:
                 os.environ["OPENAI_API_KEY"] = openrouter_key
+        elif config["llm_provider"] == "deepseek":
+            config["backend_url"] = "https://api.deepseek.com"
+            # DeepSeek uses DEEPSEEK_API_KEY, need to set OPENAI_API_KEY for ChatOpenAI
+            deepseek_key = os.getenv("DEEPSEEK_API_KEY")
+            if deepseek_key:
+                os.environ["OPENAI_API_KEY"] = deepseek_key
         elif config["llm_provider"] == "openai":
             config["backend_url"] = "https://api.openai.com/v1"
         elif config["llm_provider"] == "ollama":
@@ -347,7 +353,7 @@ async def get_config(request: Request):
     if not verify_session(token):
         raise HTTPException(status_code=401, detail="Not authenticated")
     return {
-        "llm_providers": ["google", "openai", "anthropic", "openrouter", "ollama"],
+        "llm_providers": ["google", "openai", "anthropic", "deepseek", "openrouter", "ollama"],
         "models": {
             "google": {
                 "quick": ["gemini-2.0-flash-lite", "gemini-2.0-flash", "gemini-2.5-flash-preview-05-20"],
@@ -360,6 +366,10 @@ async def get_config(request: Request):
             "anthropic": {
                 "quick": ["claude-3-5-haiku-latest", "claude-3-5-sonnet-latest"],
                 "deep": ["claude-3-5-sonnet-latest", "claude-sonnet-4-0", "claude-opus-4-0"]
+            },
+            "deepseek": {
+                "quick": ["deepseek-chat"],
+                "deep": ["deepseek-chat", "deepseek-reasoner"]
             },
             "openrouter": {
                 "quick": ["meta-llama/llama-4-scout:free", "google/gemini-2.0-flash-exp:free"],
