@@ -204,10 +204,10 @@
                             <span class="mr-2">📜</span> Search History
                         </h2>
                         <button onclick="clearHistory()" class="text-sm text-red-400 hover:text-red-300 transition-colors">
-                            🗑️ Clear
+                            🗑️ Clear All
                         </button>
                     </div>
-                    <div id="historyList" class="space-y-2 max-h-64 overflow-y-auto">
+                    <div id="historyList" class="space-y-3 max-h-96 overflow-y-auto">
                         <p class="text-gray-400 text-sm text-center py-4">No history yet</p>
                     </div>
                 </div>
@@ -271,46 +271,101 @@
                 return;
             }
             
-            container.innerHTML = history.map(item => `
-                <div class="flex items-center justify-between bg-gray-800/50 rounded-lg px-4 py-3 hover:bg-gray-800 transition-colors cursor-pointer" 
-                     onclick="viewHistoryDetail('${item.task_id}', '${item.ticker}', '${item.date}')">
-                    <div class="flex items-center space-x-3">
-                        <span class="text-lg">${item.status === 'completed' ? '✅' : '❌'}</span>
-                        <div>
-                            <div class="font-medium">${item.ticker}</div>
-                            <div class="text-xs text-gray-400">${item.date} · ${item.llm_provider}</div>
+            container.innerHTML = history.map(item => {
+                const hasFullResult = item.full_result !== null && item.full_result !== undefined;
+                return `
+                <div class="bg-gray-800/50 rounded-lg p-4 hover:bg-gray-800 transition-colors border border-gray-700/50">
+                    <div class="flex items-start justify-between">
+                        <div class="flex items-center space-x-3">
+                            <span class="text-2xl">${item.status === 'completed' ? '✅' : '❌'}</span>
+                            <div>
+                                <div class="font-semibold text-lg">${item.ticker}</div>
+                                <div class="text-sm text-gray-400">${item.date} · ${item.llm_provider.toUpperCase()}</div>
+                                <div class="text-xs text-gray-500 mt-1">${item.created_at}</div>
+                            </div>
                         </div>
+                        ${item.status === 'completed' && hasFullResult ? `
+                        <div class="flex items-center gap-2">
+                            <button onclick="event.stopPropagation(); viewHistoryDetail('${item.task_id}')" 
+                                class="text-xs bg-blue-600 hover:bg-blue-700 text-white px-3 py-1.5 rounded-lg transition-colors flex items-center gap-1">
+                                <span>👁️</span> View
+                            </button>
+                            <div class="relative" onclick="event.stopPropagation();">
+                                <button onclick="toggleDownloadMenu('${item.task_id}')" 
+                                    class="text-xs bg-green-600 hover:bg-green-700 text-white px-3 py-1.5 rounded-lg transition-colors flex items-center gap-1">
+                                    <span>📥</span> Download
+                                </button>
+                                <div id="download-menu-${item.task_id}" class="hidden absolute right-0 mt-1 bg-gray-700 rounded-lg shadow-lg z-10 py-1 min-w-28">
+                                    <a href="/api/history/${item.task_id}/download?format=pdf" class="block px-4 py-2 text-sm hover:bg-gray-600 flex items-center gap-2">
+                                        <span>📄</span> PDF
+                                    </a>
+                                    <a href="/api/history/${item.task_id}/download?format=md" class="block px-4 py-2 text-sm hover:bg-gray-600 flex items-center gap-2">
+                                        <span>📝</span> Markdown
+                                    </a>
+                                    <a href="/api/history/${item.task_id}/download?format=txt" class="block px-4 py-2 text-sm hover:bg-gray-600 flex items-center gap-2">
+                                        <span>📃</span> Text
+                                    </a>
+                                </div>
+                            </div>
+                        </div>
+                        ` : ''}
                     </div>
-                    <div class="text-right">
-                        <div class="text-xs text-gray-500">${item.created_at}</div>
-                        ${item.decision_summary ? `<div class="text-xs text-gray-400 max-w-32 truncate">${item.decision_summary}</div>` : ''}
+                    ${item.decision_summary ? `
+                    <div class="mt-3 text-sm text-gray-300 bg-gray-900/50 rounded-lg p-3 border-l-4 border-blue-500">
+                        ${item.decision_summary}
                     </div>
+                    ` : ''}
                 </div>
-            `).join('');
+            `}).join('');
         }
 
+        // Toggle download menu
+        function toggleDownloadMenu(taskId) {
+            const menu = document.getElementById(`download-menu-${taskId}`);
+            // Close all other menus
+            document.querySelectorAll('[id^="download-menu-"]').forEach(m => {
+                if (m.id !== `download-menu-${taskId}`) m.classList.add('hidden');
+            });
+            menu.classList.toggle('hidden');
+        }
+
+        // Close menus when clicking outside
+        document.addEventListener('click', (e) => {
+            if (!e.target.closest('[id^="download-menu-"]') && !e.target.closest('button')) {
+                document.querySelectorAll('[id^="download-menu-"]').forEach(m => m.classList.add('hidden'));
+            }
+        });
+
         // View history detail
-        async function viewHistoryDetail(taskId, ticker, date) {
+        async function viewHistoryDetail(taskId) {
             try {
                 const response = await fetch(`/api/history/${taskId}`);
                 if (response.ok) {
                     const data = await response.json();
                     if (data.result) {
-                        // Full result in memory
+                        // Full result available
                         currentTaskId = taskId;
-                        displayResults(data.result);
+                        // Hide empty state, show results
+                        document.getElementById('emptyState').classList.add('hidden');
+                        document.getElementById('statusCard').classList.add('hidden');
+                        showResults(data.result);
+                        // Scroll to results
+                        document.getElementById('resultsContainer').scrollIntoView({ behavior: 'smooth' });
                     } else if (data.history_record) {
-                        alert(`Record for ${ticker} (${date})\\n\\nStatus: ${data.history_record.status}\\nSummary: ${data.history_record.decision_summary || 'N/A'}\\n\\nFull results are no longer in memory.`);
+                        alert(`Record for ${data.history_record.ticker} (${data.history_record.date})\n\nStatus: ${data.history_record.status}\nSummary: ${data.history_record.decision_summary || 'N/A'}\n\nFull results are not available.`);
                     }
+                } else {
+                    alert('Failed to load history detail');
                 }
             } catch (e) {
                 console.error('Failed to load history detail:', e);
+                alert('Error loading history: ' + e.message);
             }
         }
 
         // Clear history
         async function clearHistory() {
-            if (!confirm('Are you sure you want to clear all history?')) return;
+            if (!confirm('Are you sure you want to clear all history? This cannot be undone.')) return;
             
             try {
                 const response = await fetch('/api/history', { method: 'DELETE' });

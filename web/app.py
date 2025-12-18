@@ -100,9 +100,42 @@ app.add_middleware(
 # Store analysis results and status
 analysis_tasks = {}
 
-# Store search history (in production, use database)
+# Store search history with full results (in production, use database)
 search_history = []
 MAX_HISTORY = 50  # Maximum history records to keep
+
+# Create data directory for persistent storage
+HISTORY_DIR = os.path.join(os.path.dirname(__file__), "data", "history")
+os.makedirs(HISTORY_DIR, exist_ok=True)
+
+
+def load_history_from_disk():
+    """Load history from disk on startup"""
+    global search_history
+    history_file = os.path.join(HISTORY_DIR, "history.json")
+    if os.path.exists(history_file):
+        try:
+            import json
+            with open(history_file, "r", encoding="utf-8") as f:
+                search_history = json.load(f)
+        except Exception as e:
+            print(f"Failed to load history: {e}")
+            search_history = []
+
+
+def save_history_to_disk():
+    """Save history to disk"""
+    history_file = os.path.join(HISTORY_DIR, "history.json")
+    try:
+        import json
+        with open(history_file, "w", encoding="utf-8") as f:
+            json.dump(search_history, f, ensure_ascii=False, indent=2)
+    except Exception as e:
+        print(f"Failed to save history: {e}")
+
+
+# Load history on startup
+load_history_from_disk()
 
 
 class AnalysisRequest(BaseModel):
@@ -133,11 +166,12 @@ class HistoryRecord(BaseModel):
     decision_summary: Optional[str] = None
 
 
-def save_to_history(task_id: str, request, status: str, decision_summary: Optional[str] = None):
-    """Save analysis record to history
+def save_to_history(task_id: str, request, status: str, decision_summary: Optional[str] = None, full_result: Optional[dict] = None):
+    """Save analysis record to history with full result
     
     Args:
         request: Can be AnalysisRequest object or dict
+        full_result: The complete analysis result to store
     """
     global search_history
     # Handle both AnalysisRequest and dict
@@ -157,12 +191,16 @@ def save_to_history(task_id: str, request, status: str, decision_summary: Option
         "llm_provider": llm_provider,
         "status": status,
         "created_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-        "decision_summary": decision_summary
+        "decision_summary": decision_summary,
+        "full_result": full_result  # Store complete result
     }
     search_history.insert(0, record)  # Add to beginning
     # Keep only MAX_HISTORY records
     if len(search_history) > MAX_HISTORY:
         search_history = search_history[:MAX_HISTORY]
+    
+    # Persist to disk
+    save_history_to_disk()
 
 
 def run_analysis_sync(task_id: str, request: AnalysisRequest):
@@ -224,16 +262,16 @@ def run_analysis_sync(task_id: str, request: AnalysisRequest):
         analysis_tasks[task_id]["result"] = result
         analysis_tasks[task_id]["progress"] = "Analysis complete!"
         
-        # Save to history
+        # Save to history with full result
         decision_summary = decision[:100] + "..." if len(decision) > 100 else decision
-        save_to_history(task_id, analysis_tasks[task_id]["request"], "completed", decision_summary)
+        save_to_history(task_id, analysis_tasks[task_id]["request"], "completed", decision_summary, full_result=result)
         
     except Exception as e:
         analysis_tasks[task_id]["status"] = "failed"
         analysis_tasks[task_id]["error"] = str(e)
         analysis_tasks[task_id]["progress"] = f"Error: {str(e)}"
         # Save failed record to history
-        save_to_history(task_id, analysis_tasks[task_id]["request"], "failed", str(e)[:100])
+        save_to_history(task_id, analysis_tasks[task_id]["request"], "failed", str(e)[:100], full_result=None)
 
 
 # ============== Login Page ==============
@@ -555,15 +593,314 @@ async def get_history_detail(request: Request, task_id: str):
         raise HTTPException(status_code=401, detail="Not authenticated")
     
     # First check if task is in current memory
-    if task_id in analysis_tasks:
-        return analysis_tasks[task_id]
+    if task_id in analysis_tasks and analysis_tasks[task_id].get("result"):
+        return {"result": analysis_tasks[task_id]["result"], "source": "memory"}
     
-    # Check in history
+    # Check in history for full result
     for record in search_history:
         if record["task_id"] == task_id:
-            return {"history_record": record, "message": "Full result not in memory"}
+            if record.get("full_result"):
+                return {"result": record["full_result"], "source": "history"}
+            else:
+                return {"history_record": record, "message": "Full result not available"}
     
     raise HTTPException(status_code=404, detail="History record not found")
+
+
+@app.get("/api/history/{task_id}/download")
+async def download_history_report(request: Request, task_id: str, format: str = "pdf"):
+    """Download historical analysis report (protected)"""
+    # Check authentication
+    token = get_session_token(request)
+    if not verify_session(token):
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    
+    # Find the record
+    result = None
+    for record in search_history:
+        if record["task_id"] == task_id and record.get("full_result"):
+            result = record["full_result"]
+            break
+    
+    if not result:
+        # Check in memory
+        if task_id in analysis_tasks and analysis_tasks[task_id].get("result"):
+            result = analysis_tasks[task_id]["result"]
+    
+    if not result:
+        raise HTTPException(status_code=404, detail="Report not found")
+    
+    if format == "pdf":
+        # Generate PDF
+        return await generate_pdf_from_result(result)
+    elif format == "md":
+        # Generate Markdown
+        return generate_markdown_from_result(result)
+    elif format == "txt":
+        # Generate plain text
+        return generate_text_from_result(result)
+    else:
+        raise HTTPException(status_code=400, detail="Unsupported format. Use: pdf, md, txt")
+
+
+def generate_markdown_from_result(result: dict):
+    """Generate a well-formatted Markdown report"""
+    ticker = result.get("ticker", "Unknown")
+    date = result.get("date", "")
+    
+    md_content = f"""# 📊 Trading Analysis Report
+
+**Stock:** {ticker}  
+**Date:** {date}  
+**Generated:** {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}
+
+---
+
+## 🎯 Trading Decision
+
+{result.get('decision', 'N/A')}
+
+---
+
+## 📈 Market Analysis
+
+{result.get('reports', {}).get('market', 'N/A')}
+
+---
+
+## 📰 News Analysis
+
+{result.get('reports', {}).get('news', 'N/A')}
+
+---
+
+## 📋 Fundamentals Analysis
+
+{result.get('reports', {}).get('fundamentals', 'N/A')}
+
+---
+
+## 💬 Sentiment Analysis
+
+{result.get('reports', {}).get('sentiment', 'N/A')}
+
+---
+
+## 📝 Investment Plan
+
+{result.get('investment_plan', 'N/A')}
+
+---
+
+## 🏁 Final Decision
+
+{result.get('final_decision', 'N/A')}
+
+---
+
+*Generated by TradingAgents - Multi-Agent LLM Financial Trading Framework*
+"""
+    
+    filename = f"TradingAgents_{ticker}_{date}.md"
+    return Response(
+        content=md_content,
+        media_type="text/markdown",
+        headers={"Content-Disposition": f"attachment; filename={filename}"}
+    )
+
+
+def generate_text_from_result(result: dict):
+    """Generate plain text report"""
+    ticker = result.get("ticker", "Unknown")
+    date = result.get("date", "")
+    
+    text_content = f"""════════════════════════════════════════════════════════════════
+                    TRADING ANALYSIS REPORT
+════════════════════════════════════════════════════════════════
+
+Stock: {ticker}
+Date: {date}
+Generated: {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}
+
+════════════════════════════════════════════════════════════════
+                      TRADING DECISION
+════════════════════════════════════════════════════════════════
+
+{result.get('decision', 'N/A')}
+
+════════════════════════════════════════════════════════════════
+                      MARKET ANALYSIS
+════════════════════════════════════════════════════════════════
+
+{result.get('reports', {}).get('market', 'N/A')}
+
+════════════════════════════════════════════════════════════════
+                       NEWS ANALYSIS
+════════════════════════════════════════════════════════════════
+
+{result.get('reports', {}).get('news', 'N/A')}
+
+════════════════════════════════════════════════════════════════
+                   FUNDAMENTALS ANALYSIS
+════════════════════════════════════════════════════════════════
+
+{result.get('reports', {}).get('fundamentals', 'N/A')}
+
+════════════════════════════════════════════════════════════════
+                    SENTIMENT ANALYSIS
+════════════════════════════════════════════════════════════════
+
+{result.get('reports', {}).get('sentiment', 'N/A')}
+
+════════════════════════════════════════════════════════════════
+                      INVESTMENT PLAN
+════════════════════════════════════════════════════════════════
+
+{result.get('investment_plan', 'N/A')}
+
+════════════════════════════════════════════════════════════════
+                      FINAL DECISION
+════════════════════════════════════════════════════════════════
+
+{result.get('final_decision', 'N/A')}
+
+════════════════════════════════════════════════════════════════
+Generated by TradingAgents - Multi-Agent LLM Financial Trading Framework
+════════════════════════════════════════════════════════════════
+"""
+    
+    filename = f"TradingAgents_{ticker}_{date}.txt"
+    return Response(
+        content=text_content,
+        media_type="text/plain",
+        headers={"Content-Disposition": f"attachment; filename={filename}"}
+    )
+
+
+async def generate_pdf_from_result(result: dict):
+    """Generate PDF from result"""
+    try:
+        from reportlab.lib import colors
+        from reportlab.lib.pagesizes import A4
+        from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+        from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, PageBreak
+        from reportlab.lib.enums import TA_CENTER, TA_LEFT
+        from reportlab.pdfbase import pdfmetrics
+        from reportlab.pdfbase.ttfonts import TTFont
+        
+        buffer = io.BytesIO()
+        doc = SimpleDocTemplate(buffer, pagesize=A4, rightMargin=50, leftMargin=50, topMargin=50, bottomMargin=50)
+        
+        styles = getSampleStyleSheet()
+        
+        # Custom styles for better formatting
+        styles.add(ParagraphStyle(
+            name='ReportTitle',
+            parent=styles['Heading1'],
+            fontSize=22,
+            alignment=TA_CENTER,
+            spaceAfter=20,
+            textColor=colors.HexColor('#1a365d')
+        ))
+        styles.add(ParagraphStyle(
+            name='SectionHeader',
+            parent=styles['Heading2'],
+            fontSize=14,
+            spaceBefore=15,
+            spaceAfter=10,
+            textColor=colors.HexColor('#2c5282'),
+            borderWidth=1,
+            borderColor=colors.HexColor('#e2e8f0'),
+            borderPadding=5
+        ))
+        styles.add(ParagraphStyle(
+            name='BodyText',
+            parent=styles['Normal'],
+            fontSize=10,
+            spaceAfter=8,
+            leading=14,
+            textColor=colors.HexColor('#2d3748')
+        ))
+        styles.add(ParagraphStyle(
+            name='MetaInfo',
+            parent=styles['Normal'],
+            fontSize=11,
+            alignment=TA_CENTER,
+            textColor=colors.HexColor('#718096'),
+            spaceAfter=20
+        ))
+        
+        story = []
+        
+        ticker = result.get('ticker', 'Unknown')
+        date = result.get('date', '')
+        
+        # Title
+        story.append(Paragraph("📊 Trading Analysis Report", styles['ReportTitle']))
+        story.append(Paragraph(f"<b>Stock:</b> {ticker} | <b>Date:</b> {date}", styles['MetaInfo']))
+        story.append(Spacer(1, 10))
+        
+        # Decision Summary
+        story.append(Paragraph("🎯 Trading Decision", styles['SectionHeader']))
+        decision_text = result.get('decision', 'N/A')
+        if decision_text:
+            # Clean and format text for PDF
+            clean_text = str(decision_text).replace('\n', '<br/>')[:4000]
+            story.append(Paragraph(clean_text, styles['BodyText']))
+        story.append(Spacer(1, 10))
+        
+        # Reports
+        reports = result.get('reports', {})
+        
+        section_configs = [
+            ('market', '📈 Market Analysis'),
+            ('news', '📰 News Analysis'),
+            ('fundamentals', '📋 Fundamentals Analysis'),
+            ('sentiment', '💬 Sentiment Analysis')
+        ]
+        
+        for key, title in section_configs:
+            content = reports.get(key, '')
+            if content:
+                story.append(Paragraph(title, styles['SectionHeader']))
+                clean_text = str(content).replace('\n', '<br/>')[:4000]
+                story.append(Paragraph(clean_text, styles['BodyText']))
+                story.append(Spacer(1, 8))
+        
+        # Investment Plan
+        if result.get('investment_plan'):
+            story.append(Paragraph("📝 Investment Plan", styles['SectionHeader']))
+            clean_text = str(result['investment_plan']).replace('\n', '<br/>')[:4000]
+            story.append(Paragraph(clean_text, styles['BodyText']))
+        
+        # Final Decision
+        if result.get('final_decision'):
+            story.append(Paragraph("🏁 Final Decision", styles['SectionHeader']))
+            clean_text = str(result['final_decision']).replace('\n', '<br/>')[:4000]
+            story.append(Paragraph(clean_text, styles['BodyText']))
+        
+        # Footer
+        story.append(Spacer(1, 30))
+        story.append(Paragraph(
+            f"<i>Generated by TradingAgents on {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}</i>",
+            styles['MetaInfo']
+        ))
+        
+        doc.build(story)
+        buffer.seek(0)
+        
+        filename = f"TradingAgents_{ticker}_{date}.pdf"
+        
+        return StreamingResponse(
+            buffer,
+            media_type="application/pdf",
+            headers={"Content-Disposition": f"attachment; filename={filename}"}
+        )
+        
+    except ImportError:
+        raise HTTPException(status_code=500, detail="PDF generation requires reportlab")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"PDF generation failed: {str(e)}")
 
 
 @app.delete("/api/history")
@@ -576,6 +913,7 @@ async def clear_history(request: Request):
         raise HTTPException(status_code=401, detail="Not authenticated")
     
     search_history = []
+    save_history_to_disk()  # Persist the clear
     return {"message": "History cleared", "success": True}
 
 
