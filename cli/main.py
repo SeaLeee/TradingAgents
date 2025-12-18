@@ -748,6 +748,17 @@ def run_analysis():
     config["backend_url"] = selections["backend_url"]
     config["llm_provider"] = selections["llm_provider"].lower()
 
+    # Set API key for OpenRouter (ChatOpenAI looks for OPENAI_API_KEY)
+    if config["llm_provider"] == "openrouter":
+        openrouter_key = os.environ.get("OPENROUTER_API_KEY")
+        if openrouter_key:
+            os.environ["OPENAI_API_KEY"] = openrouter_key
+        else:
+            console.print("[red]Error: OPENROUTER_API_KEY not set in environment![/red]")
+            console.print("Please add OPENROUTER_API_KEY to your .env file")
+            console.print("Get your key at: https://openrouter.ai/keys")
+            return
+
     # Initialize the graph
     graph = TradingAgentsGraph(
         [analyst.value for analyst in selections["analysts"]], config=config, debug=True
