@@ -2,6 +2,8 @@ import chromadb
 from chromadb.config import Settings
 from openai import OpenAI
 import os
+import hashlib
+import numpy as np
 
 
 class FinancialSituationMemory:
@@ -14,25 +16,15 @@ class FinancialSituationMemory:
             self.embedding = "models/text-embedding-004"
             self.client = None  # Will use google-genai directly
         elif self.llm_provider == "openrouter":
-            # OpenRouter supports OpenAI-compatible embeddings
-            self.embedding = "text-embedding-3-small"
-            openrouter_key = os.environ.get("OPENROUTER_API_KEY")
-            if openrouter_key:
-                # Use OpenAI API directly for embeddings (OpenRouter may not support all embedding models)
-                self.client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY", openrouter_key))
-            else:
-                self.client = OpenAI()
+            # OpenRouter - use simple hash-based embedding
+            self.embedding = None
+            self.client = None
+            self._use_hash_embedding = True
         elif self.llm_provider == "deepseek":
-            # DeepSeek doesn't have embeddings API, use OpenAI if available, otherwise use Google
-            self.embedding = "text-embedding-3-small"
-            openai_key = os.environ.get("OPENAI_API_KEY")
-            if openai_key:
-                self.client = OpenAI(api_key=openai_key, base_url="https://api.openai.com/v1")
-            else:
-                # Fallback to Google embeddings if no OpenAI key
-                self.embedding = "models/text-embedding-004"
-                self.client = None  # Will use google-genai
-                self.llm_provider = "google"  # Switch to google for embeddings
+            # DeepSeek - use simple hash-based embedding (DeepSeek doesn't have embedding API)
+            self.embedding = None
+            self.client = None
+            self._use_hash_embedding = True
         elif config["backend_url"] == "http://localhost:11434/v1":
             self.embedding = "nomic-embed-text"
             self.client = OpenAI(base_url=config["backend_url"])
@@ -44,10 +36,31 @@ class FinancialSituationMemory:
         # Use get_or_create_collection to avoid "already exists" error
         self.situation_collection = self.chroma_client.get_or_create_collection(name=name)
 
+    def _hash_embedding(self, text, dim=384):
+        """Generate a simple hash-based embedding for text.
+        This is a fallback when no embedding API is available.
+        Uses SHA256 hash expanded to create a pseudo-embedding vector.
+        """
+        # Create a deterministic embedding from text hash
+        text_bytes = text.encode('utf-8')
+        hash_bytes = hashlib.sha256(text_bytes).digest()
+        
+        # Expand hash to desired dimension
+        np.random.seed(int.from_bytes(hash_bytes[:4], 'big'))
+        embedding = np.random.randn(dim).astype(np.float32)
+        
+        # Normalize
+        embedding = embedding / np.linalg.norm(embedding)
+        return embedding.tolist()
+
     def get_embedding(self, text):
         """Get embedding for a text based on the LLM provider"""
         
-        if self.llm_provider == "google":
+        # Use hash-based embedding for providers without embedding API
+        if getattr(self, '_use_hash_embedding', False):
+            return self._hash_embedding(text)
+        
+        if self.llm_provider == "google" or self.client is None:
             # Use Google's embedding API
             try:
                 from google import genai
