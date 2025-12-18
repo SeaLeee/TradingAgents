@@ -611,18 +611,9 @@ async def translate_text(request: Request, translate_request: TranslateRequest):
     
     try:
         # Try to use available LLM for translation
-        # First try Google
-        google_key = os.getenv("GOOGLE_API_KEY") or os.getenv("GEMINI_API_KEY")
-        if google_key:
-            from google import genai
-            client = genai.Client(api_key=google_key)
-            response = client.models.generate_content(
-                model="gemini-2.0-flash",
-                contents=f"Translate the following financial analysis text to {target_lang_name}. Keep the structure and formatting. Only output the translation, no explanations:\n\n{text}"
-            )
-            return {"translated": response.text, "source_lang": "en", "target_lang": target_lang}
+        # Priority: DeepSeek > OpenRouter > OpenAI > Google (since DeepSeek is most cost-effective)
         
-        # Try DeepSeek
+        # Try DeepSeek first
         deepseek_key = os.getenv("DEEPSEEK_API_KEY")
         if deepseek_key:
             from openai import OpenAI
@@ -630,7 +621,21 @@ async def translate_text(request: Request, translate_request: TranslateRequest):
             response = client.chat.completions.create(
                 model="deepseek-chat",
                 messages=[
-                    {"role": "system", "content": f"You are a translator. Translate the text to {target_lang_name}. Keep the structure and formatting. Only output the translation."},
+                    {"role": "system", "content": f"You are a professional financial translator. Translate the following text to {target_lang_name}. Keep the structure, formatting and professional terminology. Only output the translation, no explanations."},
+                    {"role": "user", "content": text}
+                ]
+            )
+            return {"translated": response.choices[0].message.content, "source_lang": "en", "target_lang": target_lang}
+        
+        # Try OpenRouter
+        openrouter_key = os.getenv("OPENROUTER_API_KEY")
+        if openrouter_key:
+            from openai import OpenAI
+            client = OpenAI(api_key=openrouter_key, base_url="https://openrouter.ai/api/v1")
+            response = client.chat.completions.create(
+                model="google/gemini-2.0-flash-exp:free",
+                messages=[
+                    {"role": "system", "content": f"You are a professional financial translator. Translate the following text to {target_lang_name}. Keep the structure, formatting and professional terminology. Only output the translation, no explanations."},
                     {"role": "user", "content": text}
                 ]
             )
@@ -638,19 +643,34 @@ async def translate_text(request: Request, translate_request: TranslateRequest):
         
         # Try OpenAI
         openai_key = os.getenv("OPENAI_API_KEY")
-        if openai_key and "sk-" in openai_key:
+        if openai_key and openai_key.startswith("sk-"):
             from openai import OpenAI
             client = OpenAI(api_key=openai_key)
             response = client.chat.completions.create(
                 model="gpt-4o-mini",
                 messages=[
-                    {"role": "system", "content": f"You are a translator. Translate the text to {target_lang_name}. Keep the structure and formatting. Only output the translation."},
+                    {"role": "system", "content": f"You are a professional financial translator. Translate the following text to {target_lang_name}. Keep the structure, formatting and professional terminology. Only output the translation, no explanations."},
                     {"role": "user", "content": text}
                 ]
             )
             return {"translated": response.choices[0].message.content, "source_lang": "en", "target_lang": target_lang}
         
-        raise HTTPException(status_code=500, detail="No LLM API key available for translation")
+        # Try Google last (often has quota issues)
+        google_key = os.getenv("GOOGLE_API_KEY") or os.getenv("GEMINI_API_KEY")
+        if google_key:
+            try:
+                from google import genai
+                client = genai.Client(api_key=google_key)
+                response = client.models.generate_content(
+                    model="gemini-2.0-flash",
+                    contents=f"Translate the following financial analysis text to {target_lang_name}. Keep the structure and formatting. Only output the translation, no explanations:\n\n{text}"
+                )
+                return {"translated": response.text, "source_lang": "en", "target_lang": target_lang}
+            except Exception as google_error:
+                # Google failed, continue to raise no API error
+                pass
+        
+        raise HTTPException(status_code=500, detail="No valid LLM API key available for translation. Please set DEEPSEEK_API_KEY, OPENROUTER_API_KEY, or OPENAI_API_KEY.")
         
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Translation failed: {str(e)}")
