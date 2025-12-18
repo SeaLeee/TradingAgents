@@ -153,6 +153,22 @@
 
                 <!-- Results -->
                 <div id="resultsContainer" class="space-y-6 hidden">
+                    <!-- Action Buttons -->
+                    <div class="flex justify-end gap-3">
+                        <button id="translateBtn" onclick="translateResults()" 
+                            class="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white font-medium py-2 px-4 rounded-lg transition-colors">
+                            <span>🌐</span>
+                            翻译为中文
+                        </button>
+                        <button id="exportPdfBtn" onclick="exportPDF()" 
+                            class="flex items-center gap-2 bg-green-600 hover:bg-green-700 text-white font-medium py-2 px-4 rounded-lg transition-colors">
+                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+                            </svg>
+                            Export PDF
+                        </button>
+                    </div>
+
                     <!-- Decision Card -->
                     <div class="card rounded-2xl p-6">
                         <h2 class="text-xl font-semibold mb-4 flex items-center">
@@ -180,6 +196,21 @@
                     <h3 class="text-xl font-semibold mb-2">Ready to Analyze</h3>
                     <p class="text-gray-400">Configure your analysis parameters and click "Start Analysis" to begin.</p>
                 </div>
+
+                <!-- History Panel -->
+                <div id="historyPanel" class="card rounded-2xl p-6 mt-6">
+                    <div class="flex items-center justify-between mb-4">
+                        <h2 class="text-xl font-semibold flex items-center">
+                            <span class="mr-2">📜</span> Search History
+                        </h2>
+                        <button onclick="clearHistory()" class="text-sm text-red-400 hover:text-red-300 transition-colors">
+                            🗑️ Clear
+                        </button>
+                    </div>
+                    <div id="historyList" class="space-y-2 max-h-64 overflow-y-auto">
+                        <p class="text-gray-400 text-sm text-center py-4">No history yet</p>
+                    </div>
+                </div>
             </div>
         </div>
 
@@ -196,6 +227,7 @@
     <script>
         // Configuration data
         let configData = null;
+        let currentTaskId = null;  // Store current task ID for PDF export
 
         // Initialize
         document.addEventListener('DOMContentLoaded', async () => {
@@ -213,7 +245,82 @@
             
             // Provider change handler
             document.getElementById('llmProvider').addEventListener('change', updateModelOptions);
+            
+            // Load history
+            loadHistory();
         });
+
+        // Load search history
+        async function loadHistory() {
+            try {
+                const response = await fetch('/api/history?limit=20');
+                if (response.ok) {
+                    const data = await response.json();
+                    renderHistory(data.history);
+                }
+            } catch (e) {
+                console.error('Failed to load history:', e);
+            }
+        }
+
+        // Render history list
+        function renderHistory(history) {
+            const container = document.getElementById('historyList');
+            if (!history || history.length === 0) {
+                container.innerHTML = '<p class="text-gray-400 text-sm text-center py-4">No history yet</p>';
+                return;
+            }
+            
+            container.innerHTML = history.map(item => `
+                <div class="flex items-center justify-between bg-gray-800/50 rounded-lg px-4 py-3 hover:bg-gray-800 transition-colors cursor-pointer" 
+                     onclick="viewHistoryDetail('${item.task_id}', '${item.ticker}', '${item.date}')">
+                    <div class="flex items-center space-x-3">
+                        <span class="text-lg">${item.status === 'completed' ? '✅' : '❌'}</span>
+                        <div>
+                            <div class="font-medium">${item.ticker}</div>
+                            <div class="text-xs text-gray-400">${item.date} · ${item.llm_provider}</div>
+                        </div>
+                    </div>
+                    <div class="text-right">
+                        <div class="text-xs text-gray-500">${item.created_at}</div>
+                        ${item.decision_summary ? `<div class="text-xs text-gray-400 max-w-32 truncate">${item.decision_summary}</div>` : ''}
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        // View history detail
+        async function viewHistoryDetail(taskId, ticker, date) {
+            try {
+                const response = await fetch(`/api/history/${taskId}`);
+                if (response.ok) {
+                    const data = await response.json();
+                    if (data.result) {
+                        // Full result in memory
+                        currentTaskId = taskId;
+                        displayResults(data.result);
+                    } else if (data.history_record) {
+                        alert(`Record for ${ticker} (${date})\\n\\nStatus: ${data.history_record.status}\\nSummary: ${data.history_record.decision_summary || 'N/A'}\\n\\nFull results are no longer in memory.`);
+                    }
+                }
+            } catch (e) {
+                console.error('Failed to load history detail:', e);
+            }
+        }
+
+        // Clear history
+        async function clearHistory() {
+            if (!confirm('Are you sure you want to clear all history?')) return;
+            
+            try {
+                const response = await fetch('/api/history', { method: 'DELETE' });
+                if (response.ok) {
+                    loadHistory();
+                }
+            } catch (e) {
+                console.error('Failed to clear history:', e);
+            }
+        }
 
         function updateModelOptions() {
             const provider = document.getElementById('llmProvider').value;
@@ -271,6 +378,7 @@
                 });
                 
                 const data = await response.json();
+                currentTaskId = data.task_id;  // Save task ID for PDF export
                 pollStatus(data.task_id);
                 
             } catch (error) {
@@ -318,6 +426,19 @@
         }
 
         function showResults(result) {
+            // Save result for translation
+            currentResult = result;
+            originalResult = null;
+            isTranslated = false;
+            document.getElementById('translateBtn').innerHTML = '<span>🌐</span> 翻译为中文';
+            
+            displayResults(result);
+            
+            // Refresh history after new analysis
+            loadHistory();
+        }
+
+        function displayResults(result) {
             document.getElementById('resultsContainer').classList.remove('hidden');
             
             // Decision
@@ -368,6 +489,148 @@
         function resetButton() {
             document.getElementById('submitBtn').disabled = false;
             document.getElementById('submitBtn').innerHTML = '<span>🚀</span><span>Start Analysis</span>';
+        }
+
+        // Store current result for translation
+        let currentResult = null;
+        let isTranslated = false;
+        let originalResult = null;
+
+        // Translate results to Chinese
+        async function translateResults() {
+            if (!currentResult) {
+                alert('No analysis results to translate');
+                return;
+            }
+            
+            const btn = document.getElementById('translateBtn');
+            const originalBtnText = btn.innerHTML;
+            
+            // Toggle back to English
+            if (isTranslated && originalResult) {
+                currentResult = originalResult;
+                displayResults(currentResult);
+                btn.innerHTML = '<span>🌐</span> 翻译为中文';
+                isTranslated = false;
+                return;
+            }
+            
+            btn.disabled = true;
+            btn.innerHTML = '<span class="animate-spin inline-block">⏳</span> 翻译中...';
+            
+            try {
+                // Combine all text for translation
+                const textToTranslate = `
+## Trading Decision
+${currentResult.decision || ''}
+
+## Market Report
+${currentResult.reports?.market || ''}
+
+## News Report
+${currentResult.reports?.news || ''}
+
+## Fundamentals Report
+${currentResult.reports?.fundamentals || ''}
+
+## Sentiment Report
+${currentResult.reports?.sentiment || ''}
+
+## Investment Plan
+${currentResult.investment_plan || ''}
+                `.trim();
+                
+                const response = await fetch('/api/translate', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ text: textToTranslate, target_lang: 'zh' })
+                });
+                
+                if (response.ok) {
+                    const data = await response.json();
+                    // Save original
+                    originalResult = JSON.parse(JSON.stringify(currentResult));
+                    
+                    // Parse translated text and update result
+                    const translated = data.translated;
+                    const sections = translated.split(/##\s*/);
+                    
+                    // Create translated result
+                    const translatedResult = {
+                        ...currentResult,
+                        decision: extractSection(sections, 'Trading Decision', '交易决策') || currentResult.decision,
+                        reports: {
+                            market: extractSection(sections, 'Market Report', '市场报告') || currentResult.reports?.market,
+                            news: extractSection(sections, 'News Report', '新闻报告') || currentResult.reports?.news,
+                            fundamentals: extractSection(sections, 'Fundamentals Report', '基本面报告') || currentResult.reports?.fundamentals,
+                            sentiment: extractSection(sections, 'Sentiment Report', '情绪报告') || currentResult.reports?.sentiment
+                        },
+                        investment_plan: extractSection(sections, 'Investment Plan', '投资计划') || currentResult.investment_plan
+                    };
+                    
+                    currentResult = translatedResult;
+                    displayResults(currentResult);
+                    isTranslated = true;
+                    btn.innerHTML = '<span>🌐</span> Switch to English';
+                } else {
+                    const error = await response.json();
+                    alert('Translation failed: ' + (error.detail || 'Unknown error'));
+                    btn.innerHTML = originalBtnText;
+                }
+            } catch (e) {
+                alert('Translation failed: ' + e.message);
+                btn.innerHTML = originalBtnText;
+            } finally {
+                btn.disabled = false;
+            }
+        }
+
+        // Helper to extract section from translated text
+        function extractSection(sections, englishName, chineseName) {
+            for (const section of sections) {
+                if (section.toLowerCase().includes(englishName.toLowerCase()) || 
+                    section.includes(chineseName)) {
+                    const lines = section.split('\n');
+                    return lines.slice(1).join('\n').trim();
+                }
+            }
+            return null;
+        }
+
+        // PDF Export function
+        async function exportPDF() {
+            if (!currentTaskId) {
+                alert('No analysis to export');
+                return;
+            }
+            
+            const btn = document.getElementById('exportPdfBtn');
+            const originalText = btn.innerHTML;
+            btn.disabled = true;
+            btn.innerHTML = '<svg class="animate-spin w-5 h-5" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg> Generating...';
+            
+            try {
+                const response = await fetch(`/api/export/pdf/${currentTaskId}`);
+                if (response.ok) {
+                    const blob = await response.blob();
+                    const url = window.URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = `TradingAgents_${document.getElementById('ticker').value}_${document.getElementById('date').value}.pdf`;
+                    document.body.appendChild(a);
+                    a.click();
+                    document.body.removeChild(a);
+                    window.URL.revokeObjectURL(url);
+                } else {
+                    const error = await response.json();
+                    alert('Export failed: ' + (error.detail || 'Unknown error'));
+                }
+            } catch (e) {
+                alert('Export failed: ' + e.message);
+            } finally {
+                btn.disabled = false;
+                btn.innerHTML = originalText;
+            }
         }
     </script>
 </body>

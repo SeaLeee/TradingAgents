@@ -11,12 +11,13 @@ from datetime import datetime, timedelta
 from typing import Optional, List
 from fastapi import FastAPI, HTTPException, BackgroundTasks, Depends, Request, Response, Form
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from pydantic import BaseModel
 from dotenv import load_dotenv
 import uvicorn
+import io
 
 # Load environment variables
 load_dotenv()
@@ -99,6 +100,10 @@ app.add_middleware(
 # Store analysis results and status
 analysis_tasks = {}
 
+# Store search history (in production, use database)
+search_history = []
+MAX_HISTORY = 50  # Maximum history records to keep
+
 
 class AnalysisRequest(BaseModel):
     ticker: str = "SPY"
@@ -116,6 +121,48 @@ class AnalysisStatus(BaseModel):
     progress: Optional[str] = None
     result: Optional[dict] = None
     error: Optional[str] = None
+
+
+class HistoryRecord(BaseModel):
+    task_id: str
+    ticker: str
+    date: str
+    llm_provider: str
+    status: str
+    created_at: str
+    decision_summary: Optional[str] = None
+
+
+def save_to_history(task_id: str, request, status: str, decision_summary: Optional[str] = None):
+    """Save analysis record to history
+    
+    Args:
+        request: Can be AnalysisRequest object or dict
+    """
+    global search_history
+    # Handle both AnalysisRequest and dict
+    if isinstance(request, dict):
+        ticker = request.get("ticker", "UNKNOWN")
+        date = request.get("date", "")
+        llm_provider = request.get("llm_provider", "")
+    else:
+        ticker = request.ticker
+        date = request.date
+        llm_provider = request.llm_provider
+    
+    record = {
+        "task_id": task_id,
+        "ticker": ticker,
+        "date": date,
+        "llm_provider": llm_provider,
+        "status": status,
+        "created_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        "decision_summary": decision_summary
+    }
+    search_history.insert(0, record)  # Add to beginning
+    # Keep only MAX_HISTORY records
+    if len(search_history) > MAX_HISTORY:
+        search_history = search_history[:MAX_HISTORY]
 
 
 def run_analysis_sync(task_id: str, request: AnalysisRequest):
@@ -177,10 +224,16 @@ def run_analysis_sync(task_id: str, request: AnalysisRequest):
         analysis_tasks[task_id]["result"] = result
         analysis_tasks[task_id]["progress"] = "Analysis complete!"
         
+        # Save to history
+        decision_summary = decision[:100] + "..." if len(decision) > 100 else decision
+        save_to_history(task_id, analysis_tasks[task_id]["request"], "completed", decision_summary)
+        
     except Exception as e:
         analysis_tasks[task_id]["status"] = "failed"
         analysis_tasks[task_id]["error"] = str(e)
         analysis_tasks[task_id]["progress"] = f"Error: {str(e)}"
+        # Save failed record to history
+        save_to_history(task_id, analysis_tasks[task_id]["request"], "failed", str(e)[:100])
 
 
 # ============== Login Page ==============
@@ -382,6 +435,225 @@ async def get_config(request: Request):
         },
         "analysts": ["market", "social", "news", "fundamentals"]
     }
+
+
+@app.get("/api/export/pdf/{task_id}")
+async def export_pdf(request: Request, task_id: str):
+    """Export analysis result as PDF (protected)"""
+    # Check authentication
+    token = get_session_token(request)
+    if not verify_session(token):
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    
+    if task_id not in analysis_tasks:
+        raise HTTPException(status_code=404, detail="Task not found")
+    
+    task = analysis_tasks[task_id]
+    if task["status"] != "completed":
+        raise HTTPException(status_code=400, detail="Analysis not completed yet")
+    
+    result = task["result"]
+    
+    # Generate PDF using reportlab
+    try:
+        from reportlab.lib import colors
+        from reportlab.lib.pagesizes import letter, A4
+        from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+        from reportlab.lib.units import inch
+        from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, PageBreak
+        from reportlab.lib.enums import TA_CENTER, TA_LEFT
+        
+        buffer = io.BytesIO()
+        doc = SimpleDocTemplate(buffer, pagesize=A4, rightMargin=72, leftMargin=72, topMargin=72, bottomMargin=72)
+        
+        styles = getSampleStyleSheet()
+        styles.add(ParagraphStyle(name='Title2', parent=styles['Heading1'], fontSize=24, alignment=TA_CENTER, spaceAfter=30))
+        styles.add(ParagraphStyle(name='Section', parent=styles['Heading2'], fontSize=14, spaceAfter=12, textColor=colors.darkblue))
+        styles.add(ParagraphStyle(name='Body2', parent=styles['Normal'], fontSize=10, spaceAfter=8, leading=14))
+        
+        story = []
+        
+        # Title
+        story.append(Paragraph(f"📊 Trading Analysis Report", styles['Title2']))
+        story.append(Paragraph(f"<b>Ticker:</b> {result['ticker']} | <b>Date:</b> {result['date']}", styles['Body2']))
+        story.append(Spacer(1, 20))
+        
+        # Decision Summary
+        story.append(Paragraph("🎯 Final Decision", styles['Section']))
+        decision_text = result.get('final_decision', result.get('decision', 'N/A'))
+        if isinstance(decision_text, dict):
+            decision_text = str(decision_text)
+        story.append(Paragraph(decision_text[:2000] if decision_text else "N/A", styles['Body2']))
+        story.append(Spacer(1, 15))
+        
+        # Reports
+        reports = result.get('reports', {})
+        
+        if reports.get('market'):
+            story.append(Paragraph("📈 Market Analysis", styles['Section']))
+            story.append(Paragraph(str(reports['market'])[:3000], styles['Body2']))
+            story.append(Spacer(1, 10))
+        
+        if reports.get('news'):
+            story.append(Paragraph("📰 News Analysis", styles['Section']))
+            story.append(Paragraph(str(reports['news'])[:3000], styles['Body2']))
+            story.append(Spacer(1, 10))
+        
+        if reports.get('fundamentals'):
+            story.append(Paragraph("📋 Fundamentals Analysis", styles['Section']))
+            story.append(Paragraph(str(reports['fundamentals'])[:3000], styles['Body2']))
+            story.append(Spacer(1, 10))
+        
+        if reports.get('sentiment'):
+            story.append(Paragraph("💬 Sentiment Analysis", styles['Section']))
+            story.append(Paragraph(str(reports['sentiment'])[:3000], styles['Body2']))
+            story.append(Spacer(1, 10))
+        
+        # Investment Plan
+        if result.get('investment_plan'):
+            story.append(Paragraph("📝 Investment Plan", styles['Section']))
+            story.append(Paragraph(str(result['investment_plan'])[:3000], styles['Body2']))
+        
+        # Footer
+        story.append(Spacer(1, 30))
+        story.append(Paragraph(f"<i>Generated by TradingAgents on {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}</i>", styles['Body2']))
+        
+        doc.build(story)
+        buffer.seek(0)
+        
+        filename = f"TradingAgents_{result['ticker']}_{result['date']}.pdf"
+        
+        return StreamingResponse(
+            buffer,
+            media_type="application/pdf",
+            headers={"Content-Disposition": f"attachment; filename={filename}"}
+        )
+        
+    except ImportError:
+        raise HTTPException(status_code=500, detail="PDF generation requires reportlab. Install with: pip install reportlab")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"PDF generation failed: {str(e)}")
+
+
+@app.get("/api/history")
+async def get_history(request: Request, limit: int = 20):
+    """Get analysis history (protected)"""
+    # Check authentication
+    token = get_session_token(request)
+    if not verify_session(token):
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    
+    return {"history": search_history[:limit], "total": len(search_history)}
+
+
+@app.get("/api/history/{task_id}")
+async def get_history_detail(request: Request, task_id: str):
+    """Get detail of a historical analysis (protected)"""
+    # Check authentication
+    token = get_session_token(request)
+    if not verify_session(token):
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    
+    # First check if task is in current memory
+    if task_id in analysis_tasks:
+        return analysis_tasks[task_id]
+    
+    # Check in history
+    for record in search_history:
+        if record["task_id"] == task_id:
+            return {"history_record": record, "message": "Full result not in memory"}
+    
+    raise HTTPException(status_code=404, detail="History record not found")
+
+
+@app.delete("/api/history")
+async def clear_history(request: Request):
+    """Clear all history (protected)"""
+    global search_history
+    # Check authentication
+    token = get_session_token(request)
+    if not verify_session(token):
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    
+    search_history = []
+    return {"message": "History cleared", "success": True}
+
+
+class TranslateRequest(BaseModel):
+    text: str
+    target_lang: str = "zh"  # Default to Chinese
+
+
+@app.post("/api/translate")
+async def translate_text(request: Request, translate_request: TranslateRequest):
+    """Translate text using LLM (protected)"""
+    # Check authentication
+    token = get_session_token(request)
+    if not verify_session(token):
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    
+    text = translate_request.text
+    target_lang = translate_request.target_lang
+    
+    if not text or len(text.strip()) == 0:
+        raise HTTPException(status_code=400, detail="No text provided")
+    
+    lang_names = {
+        "zh": "Chinese (Simplified)",
+        "zh-TW": "Chinese (Traditional)",
+        "ja": "Japanese",
+        "ko": "Korean",
+        "es": "Spanish",
+        "fr": "French",
+        "de": "German"
+    }
+    target_lang_name = lang_names.get(target_lang, "Chinese")
+    
+    try:
+        # Try to use available LLM for translation
+        # First try Google
+        google_key = os.getenv("GOOGLE_API_KEY") or os.getenv("GEMINI_API_KEY")
+        if google_key:
+            from google import genai
+            client = genai.Client(api_key=google_key)
+            response = client.models.generate_content(
+                model="gemini-2.0-flash",
+                contents=f"Translate the following financial analysis text to {target_lang_name}. Keep the structure and formatting. Only output the translation, no explanations:\n\n{text}"
+            )
+            return {"translated": response.text, "source_lang": "en", "target_lang": target_lang}
+        
+        # Try DeepSeek
+        deepseek_key = os.getenv("DEEPSEEK_API_KEY")
+        if deepseek_key:
+            from openai import OpenAI
+            client = OpenAI(api_key=deepseek_key, base_url="https://api.deepseek.com")
+            response = client.chat.completions.create(
+                model="deepseek-chat",
+                messages=[
+                    {"role": "system", "content": f"You are a translator. Translate the text to {target_lang_name}. Keep the structure and formatting. Only output the translation."},
+                    {"role": "user", "content": text}
+                ]
+            )
+            return {"translated": response.choices[0].message.content, "source_lang": "en", "target_lang": target_lang}
+        
+        # Try OpenAI
+        openai_key = os.getenv("OPENAI_API_KEY")
+        if openai_key and "sk-" in openai_key:
+            from openai import OpenAI
+            client = OpenAI(api_key=openai_key)
+            response = client.chat.completions.create(
+                model="gpt-4o-mini",
+                messages=[
+                    {"role": "system", "content": f"You are a translator. Translate the text to {target_lang_name}. Keep the structure and formatting. Only output the translation."},
+                    {"role": "user", "content": text}
+                ]
+            )
+            return {"translated": response.choices[0].message.content, "source_lang": "en", "target_lang": target_lang}
+        
+        raise HTTPException(status_code=500, detail="No LLM API key available for translation")
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Translation failed: {str(e)}")
 
 
 def get_default_html():
