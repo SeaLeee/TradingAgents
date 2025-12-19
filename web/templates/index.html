@@ -80,10 +80,10 @@
                             <label class="block text-sm font-medium text-gray-300 mb-2">LLM Provider</label>
                             <select id="llmProvider" 
                                 class="w-full bg-gray-800 border border-gray-700 rounded-lg px-4 py-2.5 focus:ring-2 focus:ring-blue-500">
+                                <option value="deepseek" selected>DeepSeek (推荐)</option>
                                 <option value="google">Google (Gemini)</option>
                                 <option value="openai">OpenAI</option>
                                 <option value="anthropic">Anthropic (Claude)</option>
-                                <option value="deepseek">DeepSeek (Cost-Effective)</option>
                                 <option value="openrouter">OpenRouter (Free)</option>
                                 <option value="ollama">Ollama (Local)</option>
                             </select>
@@ -132,7 +132,7 @@
                         <button type="submit" id="submitBtn"
                             class="w-full bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700 text-white font-semibold py-3 px-6 rounded-lg transition-all duration-200 flex items-center justify-center space-x-2">
                             <span>🚀</span>
-                            <span>Start Analysis</span>
+                            <span>开始分析</span>
                         </button>
                     </form>
                 </div>
@@ -145,8 +145,8 @@
                     <div class="flex items-center space-x-4">
                         <div id="statusIndicator" class="w-4 h-4 rounded-full bg-yellow-500 pulse-dot"></div>
                         <div>
-                            <h3 class="font-semibold" id="statusTitle">Processing...</h3>
-                            <p class="text-gray-400 text-sm" id="statusMessage">Initializing agents...</p>
+                            <h3 class="font-semibold" id="statusTitle">处理中...</h3>
+                            <p class="text-gray-400 text-sm" id="statusMessage">正在初始化代理...</p>
                         </div>
                     </div>
                 </div>
@@ -155,34 +155,39 @@
                 <div id="resultsContainer" class="space-y-6 hidden">
                     <!-- Action Buttons -->
                     <div class="flex justify-end gap-3">
-                        <button id="translateBtn" onclick="translateResults()" 
-                            class="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white font-medium py-2 px-4 rounded-lg transition-colors">
-                            <span>🌐</span>
-                            翻译为中文
-                        </button>
                         <button id="exportPdfBtn" onclick="exportPDF()" 
                             class="flex items-center gap-2 bg-green-600 hover:bg-green-700 text-white font-medium py-2 px-4 rounded-lg transition-colors">
                             <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
                             </svg>
-                            Export PDF
+                            导出 PDF
                         </button>
                     </div>
 
-                    <!-- Decision Card -->
+                    <!-- Decision Card - Chinese First -->
                     <div class="card rounded-2xl p-6">
                         <h2 class="text-xl font-semibold mb-4 flex items-center">
-                            <span class="mr-2">🎯</span> Trading Decision
+                            <span class="mr-2">🎯</span> 交易决策 <span class="text-sm text-gray-400 ml-2">(Trading Decision)</span>
                         </h2>
-                        <div id="decisionContent" class="bg-gray-800 rounded-lg p-4 markdown-content">
-                            <!-- Decision will be inserted here -->
+                        <!-- Chinese Decision -->
+                        <div id="decisionContentZh" class="bg-gray-800 rounded-lg p-4 markdown-content mb-4 border-l-4 border-red-500">
+                            <div class="text-xs text-red-400 mb-2 font-medium">🇨🇳 中文</div>
+                            <div id="decisionZhText"></div>
                         </div>
+                        <!-- English Decision -->
+                        <details class="bg-gray-700/50 rounded-lg">
+                            <summary class="px-4 py-3 cursor-pointer hover:bg-gray-700 rounded-lg font-medium text-sm text-gray-400">
+                                🇺🇸 View English Original
+                            </summary>
+                            <div id="decisionContentEn" class="px-4 py-3 border-t border-gray-600 markdown-content text-sm text-gray-300">
+                            </div>
+                        </details>
                     </div>
 
                     <!-- Reports Accordion -->
                     <div class="card rounded-2xl p-6">
                         <h2 class="text-xl font-semibold mb-4 flex items-center">
-                            <span class="mr-2">📋</span> Analysis Reports
+                            <span class="mr-2">📋</span> 分析报告 <span class="text-sm text-gray-400 ml-2">(Analysis Reports)</span>
                         </h2>
                         <div class="space-y-3" id="reportsAccordion">
                             <!-- Reports will be inserted here -->
@@ -481,11 +486,8 @@
         }
 
         function showResults(result) {
-            // Save result for translation
+            // Save result for reference
             currentResult = result;
-            originalResult = null;
-            isTranslated = false;
-            document.getElementById('translateBtn').innerHTML = '<span>🌐</span> 翻译为中文';
             
             displayResults(result);
             
@@ -496,22 +498,62 @@
         function displayResults(result) {
             document.getElementById('resultsContainer').classList.remove('hidden');
             
-            // Decision
-            document.getElementById('decisionContent').innerHTML = formatMarkdown(result.decision || 'No decision available');
+            const translated = result.translated || {};
+            const hasTranslation = translated && Object.keys(translated).length > 0;
             
-            // Reports
-            const reportsHtml = Object.entries(result.reports || {})
+            // Decision - Chinese first, then English
+            const decisionZh = translated.decision || '';
+            const decisionEn = result.decision || 'No decision available';
+            
+            if (hasTranslation && decisionZh) {
+                document.getElementById('decisionZhText').innerHTML = formatMarkdown(decisionZh);
+                document.getElementById('decisionContentZh').style.display = 'block';
+            } else {
+                // No translation, show English in main area
+                document.getElementById('decisionZhText').innerHTML = '<span class="text-gray-400 italic">翻译不可用，请查看英文原文</span>';
+            }
+            document.getElementById('decisionContentEn').innerHTML = formatMarkdown(decisionEn);
+            
+            // Reports - Chinese first, then English in collapsible
+            const reportsEn = result.reports || {};
+            const reportsZh = translated.reports || {};
+            
+            const reportNames = {
+                'market': { zh: '市场分析', en: 'Market Analysis', icon: '📊' },
+                'news': { zh: '新闻分析', en: 'News Analysis', icon: '📰' },
+                'fundamentals': { zh: '基本面分析', en: 'Fundamentals Analysis', icon: '📈' },
+                'sentiment': { zh: '情绪分析', en: 'Sentiment Analysis', icon: '💬' }
+            };
+            
+            const reportsHtml = Object.entries(reportsEn)
                 .filter(([_, content]) => content)
-                .map(([name, content]) => `
-                    <details class="bg-gray-800 rounded-lg">
+                .map(([name, contentEn]) => {
+                    const info = reportNames[name] || { zh: name, en: name, icon: '📋' };
+                    const contentZh = reportsZh[name] || '';
+                    
+                    return `
+                    <details class="bg-gray-800 rounded-lg" open>
                         <summary class="px-4 py-3 cursor-pointer hover:bg-gray-700 rounded-lg font-medium">
-                            ${getReportIcon(name)} ${name.charAt(0).toUpperCase() + name.slice(1)} Report
+                            ${info.icon} ${info.zh} <span class="text-sm text-gray-400">(${info.en})</span>
                         </summary>
-                        <div class="px-4 py-3 border-t border-gray-700 markdown-content text-sm text-gray-300">
-                            ${formatMarkdown(content)}
+                        <div class="px-4 py-3 border-t border-gray-700">
+                            ${contentZh ? `
+                            <div class="mb-4 bg-gray-900/50 rounded-lg p-4 border-l-4 border-red-500">
+                                <div class="text-xs text-red-400 mb-2 font-medium">🇨🇳 中文</div>
+                                <div class="markdown-content text-sm text-gray-200">${formatMarkdown(contentZh)}</div>
+                            </div>
+                            ` : ''}
+                            <details class="bg-gray-700/30 rounded-lg">
+                                <summary class="px-3 py-2 cursor-pointer hover:bg-gray-700/50 rounded-lg text-sm text-gray-400">
+                                    🇺🇸 View English Original
+                                </summary>
+                                <div class="px-3 py-2 border-t border-gray-600 markdown-content text-sm text-gray-400">
+                                    ${formatMarkdown(contentEn)}
+                                </div>
+                            </details>
                         </div>
                     </details>
-                `).join('');
+                `}).join('');
             
             document.getElementById('reportsAccordion').innerHTML = reportsHtml || '<p class="text-gray-400">No reports available</p>';
         }
@@ -543,126 +585,23 @@
 
         function resetButton() {
             document.getElementById('submitBtn').disabled = false;
-            document.getElementById('submitBtn').innerHTML = '<span>🚀</span><span>Start Analysis</span>';
+            document.getElementById('submitBtn').innerHTML = '<span>🚀</span><span>开始分析</span>';
         }
 
-        // Store current result for translation
+        // Store current result
         let currentResult = null;
-        let isTranslated = false;
-        let originalResult = null;
-
-        // Translate results to Chinese
-        async function translateResults() {
-            if (!currentResult) {
-                alert('No analysis results to translate');
-                return;
-            }
-            
-            const btn = document.getElementById('translateBtn');
-            const originalBtnText = btn.innerHTML;
-            
-            // Toggle back to English
-            if (isTranslated && originalResult) {
-                currentResult = originalResult;
-                displayResults(currentResult);
-                btn.innerHTML = '<span>🌐</span> 翻译为中文';
-                isTranslated = false;
-                return;
-            }
-            
-            btn.disabled = true;
-            btn.innerHTML = '<span class="animate-spin inline-block">⏳</span> 翻译中...';
-            
-            try {
-                // Combine all text for translation
-                const textToTranslate = `
-## Trading Decision
-${currentResult.decision || ''}
-
-## Market Report
-${currentResult.reports?.market || ''}
-
-## News Report
-${currentResult.reports?.news || ''}
-
-## Fundamentals Report
-${currentResult.reports?.fundamentals || ''}
-
-## Sentiment Report
-${currentResult.reports?.sentiment || ''}
-
-## Investment Plan
-${currentResult.investment_plan || ''}
-                `.trim();
-                
-                const response = await fetch('/api/translate', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ text: textToTranslate, target_lang: 'zh' })
-                });
-                
-                if (response.ok) {
-                    const data = await response.json();
-                    // Save original
-                    originalResult = JSON.parse(JSON.stringify(currentResult));
-                    
-                    // Parse translated text and update result
-                    const translated = data.translated;
-                    const sections = translated.split(/##\s*/);
-                    
-                    // Create translated result
-                    const translatedResult = {
-                        ...currentResult,
-                        decision: extractSection(sections, 'Trading Decision', '交易决策') || currentResult.decision,
-                        reports: {
-                            market: extractSection(sections, 'Market Report', '市场报告') || currentResult.reports?.market,
-                            news: extractSection(sections, 'News Report', '新闻报告') || currentResult.reports?.news,
-                            fundamentals: extractSection(sections, 'Fundamentals Report', '基本面报告') || currentResult.reports?.fundamentals,
-                            sentiment: extractSection(sections, 'Sentiment Report', '情绪报告') || currentResult.reports?.sentiment
-                        },
-                        investment_plan: extractSection(sections, 'Investment Plan', '投资计划') || currentResult.investment_plan
-                    };
-                    
-                    currentResult = translatedResult;
-                    displayResults(currentResult);
-                    isTranslated = true;
-                    btn.innerHTML = '<span>🌐</span> Switch to English';
-                } else {
-                    const error = await response.json();
-                    alert('Translation failed: ' + (error.detail || 'Unknown error'));
-                    btn.innerHTML = originalBtnText;
-                }
-            } catch (e) {
-                alert('Translation failed: ' + e.message);
-                btn.innerHTML = originalBtnText;
-            } finally {
-                btn.disabled = false;
-            }
-        }
-
-        // Helper to extract section from translated text
-        function extractSection(sections, englishName, chineseName) {
-            for (const section of sections) {
-                if (section.toLowerCase().includes(englishName.toLowerCase()) || 
-                    section.includes(chineseName)) {
-                    const lines = section.split('\n');
-                    return lines.slice(1).join('\n').trim();
-                }
-            }
-            return null;
-        }
 
         // PDF Export function
         async function exportPDF() {
             if (!currentTaskId) {
-                alert('No analysis to export');
+                alert('暂无可导出的分析结果');
                 return;
             }
             
             const btn = document.getElementById('exportPdfBtn');
             const originalText = btn.innerHTML;
             btn.disabled = true;
-            btn.innerHTML = '<svg class="animate-spin w-5 h-5" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg> Generating...';
+            btn.innerHTML = '<svg class="animate-spin w-5 h-5" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg> 生成中...';
             
             try {
                 const response = await fetch(`/api/export/pdf/${currentTaskId}`);
@@ -678,10 +617,10 @@ ${currentResult.investment_plan || ''}
                     window.URL.revokeObjectURL(url);
                 } else {
                     const error = await response.json();
-                    alert('Export failed: ' + (error.detail || 'Unknown error'));
+                    alert('导出失败: ' + (error.detail || 'Unknown error'));
                 }
             } catch (e) {
-                alert('Export failed: ' + e.message);
+                alert('导出失败: ' + e.message);
             } finally {
                 btn.disabled = false;
                 btn.innerHTML = originalText;

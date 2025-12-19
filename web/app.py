@@ -141,9 +141,9 @@ load_history_from_disk()
 class AnalysisRequest(BaseModel):
     ticker: str = "SPY"
     date: str = datetime.now().strftime("%Y-%m-%d")
-    llm_provider: str = "google"
-    quick_think_llm: str = "gemini-2.0-flash"
-    deep_think_llm: str = "gemini-2.0-flash"
+    llm_provider: str = "deepseek"
+    quick_think_llm: str = "deepseek-chat"
+    deep_think_llm: str = "deepseek-chat"
     analysts: List[str] = ["market", "news", "fundamentals", "social"]
     max_debate_rounds: int = 1
 
@@ -203,6 +203,81 @@ def save_to_history(task_id: str, request, status: str, decision_summary: Option
     save_history_to_disk()
 
 
+def translate_text_sync(text: str, target_lang: str = "zh") -> str:
+    """Translate text using available LLM - synchronous version"""
+    if not text or len(text.strip()) == 0:
+        return ""
+    
+    lang_names = {
+        "zh": "Chinese (Simplified)",
+        "zh-TW": "Chinese (Traditional)", 
+        "ja": "Japanese",
+        "ko": "Korean"
+    }
+    target_lang_name = lang_names.get(target_lang, "Chinese (Simplified)")
+    
+    try:
+        # Try DeepSeek first (most reliable)
+        deepseek_key = os.getenv("DEEPSEEK_API_KEY")
+        if deepseek_key:
+            from openai import OpenAI
+            client = OpenAI(api_key=deepseek_key, base_url="https://api.deepseek.com")
+            response = client.chat.completions.create(
+                model="deepseek-chat",
+                messages=[
+                    {"role": "system", "content": f"You are a professional financial translator. Translate the following text to {target_lang_name}. Keep the structure, formatting and professional terminology. Only output the translation, no explanations or additional text."},
+                    {"role": "user", "content": text}
+                ],
+                temperature=0.3
+            )
+            return response.choices[0].message.content
+        
+        # Try OpenRouter
+        openrouter_key = os.getenv("OPENROUTER_API_KEY")
+        if openrouter_key:
+            from openai import OpenAI
+            client = OpenAI(api_key=openrouter_key, base_url="https://openrouter.ai/api/v1")
+            response = client.chat.completions.create(
+                model="google/gemini-2.0-flash-exp:free",
+                messages=[
+                    {"role": "system", "content": f"You are a professional financial translator. Translate the following text to {target_lang_name}. Keep the structure, formatting and professional terminology. Only output the translation."},
+                    {"role": "user", "content": text}
+                ]
+            )
+            return response.choices[0].message.content
+            
+        return ""  # No translation available
+    except Exception as e:
+        print(f"Translation error: {e}")
+        return ""  # Return empty on error
+
+
+def translate_result(result: dict) -> dict:
+    """Translate all text fields in a result dict to Chinese"""
+    translated = {}
+    
+    # Translate decision
+    if result.get("decision"):
+        translated["decision"] = translate_text_sync(result["decision"])
+    
+    # Translate reports
+    if result.get("reports"):
+        translated["reports"] = {}
+        for key, value in result["reports"].items():
+            if value:
+                translated["reports"][key] = translate_text_sync(value)
+    
+    # Translate investment plan
+    if result.get("investment_plan"):
+        translated["investment_plan"] = translate_text_sync(result["investment_plan"])
+    
+    # Translate final decision
+    if result.get("final_decision"):
+        translated["final_decision"] = translate_text_sync(result["final_decision"])
+    
+    return translated
+
+
 def run_analysis_sync(task_id: str, request: AnalysisRequest):
     """Run analysis synchronously (called in background)"""
     try:
@@ -243,7 +318,7 @@ def run_analysis_sync(task_id: str, request: AnalysisRequest):
         analysis_tasks[task_id]["progress"] = f"Analyzing {request.ticker}..."
         state, decision = graph.propagate(request.ticker, request.date)
         
-        # Extract results
+        # Extract results (English)
         result = {
             "ticker": request.ticker,
             "date": request.date,
@@ -257,6 +332,15 @@ def run_analysis_sync(task_id: str, request: AnalysisRequest):
             "investment_plan": state.get("investment_plan", ""),
             "final_decision": state.get("final_trade_decision", ""),
         }
+        
+        # Auto-translate to Chinese
+        analysis_tasks[task_id]["progress"] = "Translating to Chinese..."
+        try:
+            translated = translate_result(result)
+            result["translated"] = translated  # Add Chinese translation
+        except Exception as translate_error:
+            print(f"Translation failed: {translate_error}")
+            result["translated"] = None  # Translation failed
         
         analysis_tasks[task_id]["status"] = "completed"
         analysis_tasks[task_id]["result"] = result
@@ -444,8 +528,13 @@ async def get_config(request: Request):
     if not verify_session(token):
         raise HTTPException(status_code=401, detail="Not authenticated")
     return {
-        "llm_providers": ["google", "openai", "anthropic", "deepseek", "openrouter", "ollama"],
+        "llm_providers": ["deepseek", "google", "openai", "anthropic", "openrouter", "ollama"],
+        "default_provider": "deepseek",
         "models": {
+            "deepseek": {
+                "quick": ["deepseek-chat"],
+                "deep": ["deepseek-chat", "deepseek-reasoner"]
+            },
             "google": {
                 "quick": ["gemini-2.0-flash-lite", "gemini-2.0-flash", "gemini-2.5-flash-preview-05-20"],
                 "deep": ["gemini-2.0-flash-lite", "gemini-2.0-flash", "gemini-2.5-flash-preview-05-20", "gemini-2.5-pro-preview-06-05"]
@@ -457,10 +546,6 @@ async def get_config(request: Request):
             "anthropic": {
                 "quick": ["claude-3-5-haiku-latest", "claude-3-5-sonnet-latest"],
                 "deep": ["claude-3-5-sonnet-latest", "claude-sonnet-4-0", "claude-opus-4-0"]
-            },
-            "deepseek": {
-                "quick": ["deepseek-chat"],
-                "deep": ["deepseek-chat", "deepseek-reasoner"]
             },
             "openrouter": {
                 "quick": ["meta-llama/llama-4-scout:free", "google/gemini-2.0-flash-exp:free"],
