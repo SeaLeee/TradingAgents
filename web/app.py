@@ -43,6 +43,9 @@ AUTH_USERNAME = os.environ.get("AUTH_USERNAME", "admin")
 AUTH_PASSWORD = os.environ.get("AUTH_PASSWORD", "trading123")  # Change this!
 SESSION_SECRET = os.environ.get("SESSION_SECRET", secrets.token_hex(32))
 
+# ============== TEST MODE ==============
+TEST_MODE = os.getenv("TEST_MODE", "false").lower() == "true"
+
 # Simple session store (in production, use Redis or database)
 sessions = {}
 
@@ -64,7 +67,11 @@ def create_session() -> str:
     return token
 
 def verify_session(token: str) -> bool:
-    """Verify session token"""
+    """Verify session token - always returns True in TEST_MODE"""
+    # In TEST_MODE, skip authentication
+    if TEST_MODE:
+        return True
+    
     if not token or token not in sessions:
         return False
     session = sessions[token]
@@ -201,10 +208,6 @@ def save_to_history(task_id: str, request, status: str, decision_summary: Option
     
     # Persist to disk
     save_history_to_disk()
-
-
-# ============== TEST MODE ==============
-TEST_MODE = os.getenv("TEST_MODE", "false").lower() == "true"
 
 
 def translate_text_sync(text: str, target_lang: str = "zh") -> str:

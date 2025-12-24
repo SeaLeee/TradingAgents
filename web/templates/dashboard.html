@@ -27,22 +27,13 @@
         .fear-gauge {
             background: linear-gradient(90deg, #ef4444 0%, #f97316 25%, #eab308 50%, #84cc16 75%, #22c55e 100%);
         }
-        .iframe-container {
-            position: relative;
-            overflow: hidden;
-            border-radius: 0.5rem;
+        .resource-card {
+            transition: all 0.3s ease;
+            cursor: pointer;
         }
-        .loading-spinner {
-            border: 3px solid rgba(255, 255, 255, 0.1);
-            border-top: 3px solid #3b82f6;
-            border-radius: 50%;
-            width: 40px;
-            height: 40px;
-            animation: spin 1s linear infinite;
-        }
-        @keyframes spin {
-            0% { transform: rotate(0deg); }
-            100% { transform: rotate(360deg); }
+        .resource-card:hover {
+            transform: translateY(-8px);
+            box-shadow: 0 25px 50px rgba(0, 0, 0, 0.4);
         }
         .sidebar {
             transition: transform 0.3s ease;
@@ -54,6 +45,11 @@
             .sidebar.open {
                 transform: translateX(0);
             }
+        }
+        .chart-container {
+            background: #131722;
+            border-radius: 0.5rem;
+            overflow: hidden;
         }
     </style>
 </head>
@@ -81,21 +77,17 @@
                 <i class="fas fa-globe w-5"></i>
                 <span>市场概览</span>
             </a>
+            <a href="#stock-chart" class="nav-link flex items-center gap-3 px-6 py-3 text-gray-300" onclick="scrollToSection('stock-chart')">
+                <i class="fas fa-chart-area w-5"></i>
+                <span>股票图表</span>
+            </a>
             <a href="#fear-greed" class="nav-link flex items-center gap-3 px-6 py-3 text-gray-300" onclick="scrollToSection('fear-greed')">
                 <i class="fas fa-heart-pulse w-5"></i>
                 <span>恐慌贪婪指数</span>
             </a>
-            <a href="#options" class="nav-link flex items-center gap-3 px-6 py-3 text-gray-300" onclick="scrollToSection('options')">
-                <i class="fas fa-chart-bar w-5"></i>
-                <span>期权数据</span>
-            </a>
-            <a href="#darkpool" class="nav-link flex items-center gap-3 px-6 py-3 text-gray-300" onclick="scrollToSection('darkpool')">
-                <i class="fas fa-eye-slash w-5"></i>
-                <span>暗池数据</span>
-            </a>
-            <a href="#sectors" class="nav-link flex items-center gap-3 px-6 py-3 text-gray-300" onclick="scrollToSection('sectors')">
-                <i class="fas fa-th-large w-5"></i>
-                <span>板块轮动</span>
+            <a href="#resources" class="nav-link flex items-center gap-3 px-6 py-3 text-gray-300" onclick="scrollToSection('resources')">
+                <i class="fas fa-tools w-5"></i>
+                <span>分析工具</span>
             </a>
             <a href="#education" class="nav-link flex items-center gap-3 px-6 py-3 text-gray-300" onclick="scrollToSection('education')">
                 <i class="fas fa-graduation-cap w-5"></i>
@@ -180,7 +172,7 @@
                         <div class="bg-gray-700/30 rounded-lg p-4">
                             <h3 class="text-lg font-semibold mb-3 text-blue-400">基本面数据</h3>
                             <table class="w-full text-sm">
-                                <tbody id="fundamentalsTable">
+                                <tbody>
                                     <tr class="border-b border-gray-600">
                                         <td class="py-2 text-gray-400">每股收益 (EPS)</td>
                                         <td id="stockEPS" class="py-2 text-right font-medium">--</td>
@@ -207,7 +199,7 @@
                         <div class="bg-gray-700/30 rounded-lg p-4">
                             <h3 class="text-lg font-semibold mb-3 text-green-400">技术指标</h3>
                             <table class="w-full text-sm">
-                                <tbody id="technicalTable">
+                                <tbody>
                                     <tr class="border-b border-gray-600">
                                         <td class="py-2 text-gray-400">50日均线</td>
                                         <td id="stockMA50" class="py-2 text-right font-medium">--</td>
@@ -292,6 +284,26 @@
                 </div>
             </section>
 
+            <!-- 股票图表 (TradingView Widget) -->
+            <section id="stock-chart" class="mb-8">
+                <h2 class="text-2xl font-bold mb-4 flex items-center gap-2">
+                    <i class="fas fa-chart-area text-green-400"></i>
+                    实时图表
+                    <span class="text-sm font-normal text-gray-400 ml-2">(输入股票代码后显示)</span>
+                </h2>
+                <div class="bg-gray-800/50 rounded-xl p-4 border border-gray-700">
+                    <div id="tradingview-widget" class="chart-container" style="height: 500px;">
+                        <div id="tv-chart-container" style="height: 100%; display: flex; align-items: center; justify-content: center;">
+                            <div class="text-center text-gray-400">
+                                <i class="fas fa-chart-line text-6xl mb-4"></i>
+                                <p class="text-lg">在上方搜索栏输入股票代码</p>
+                                <p class="text-sm">例如: AAPL, TSLA, NVDA, GOOGL</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
             <!-- 恐慌贪婪指数 -->
             <section id="fear-greed" class="mb-8">
                 <h2 class="text-2xl font-bold mb-4 flex items-center gap-2">
@@ -316,185 +328,200 @@
                                     <p id="fearLabel" class="text-lg text-gray-400">加载中...</p>
                                 </div>
                             </div>
+                            
+                            <div class="bg-gray-700/30 rounded-lg p-4 mb-4">
+                                <h4 class="font-semibold mb-2 text-yellow-400">指数解读</h4>
+                                <ul class="text-sm text-gray-400 space-y-1">
+                                    <li><span class="text-red-400">0-25:</span> 极度恐慌 - 可能是买入机会</li>
+                                    <li><span class="text-orange-400">26-45:</span> 恐慌 - 市场谨慎</li>
+                                    <li><span class="text-yellow-400">46-55:</span> 中性 - 观望态势</li>
+                                    <li><span class="text-lime-400">56-75:</span> 贪婪 - 市场乐观</li>
+                                    <li><span class="text-green-400">76-100:</span> 极度贪婪 - 可能需要谨慎</li>
+                                </ul>
+                            </div>
+                            
                             <a href="https://www.cnn.com/markets/fear-and-greed" target="_blank" 
-                               class="inline-flex items-center gap-2 text-blue-400 hover:text-blue-300">
+                               class="inline-flex items-center gap-2 bg-red-600 hover:bg-red-700 px-4 py-2 rounded-lg transition-colors">
                                 <i class="fas fa-external-link-alt"></i>
                                 查看 CNN 详细报告
                             </a>
                         </div>
-                        <div class="iframe-container bg-gray-900 rounded-lg overflow-hidden" style="height: 300px;">
-                            <iframe src="https://www.cnn.com/markets/fear-and-greed" 
-                                    class="w-full h-full border-0"
-                                    sandbox="allow-scripts allow-same-origin"
-                                    loading="lazy"></iframe>
-                            <div class="absolute inset-0 flex items-center justify-center bg-gray-900/80 pointer-events-none" id="fearIframeLoader">
-                                <div class="loading-spinner"></div>
+                        <div>
+                            <h4 class="font-semibold mb-3 text-blue-400">七大市场指标</h4>
+                            <div class="space-y-2">
+                                <div class="bg-gray-700/50 rounded-lg p-3 flex justify-between items-center">
+                                    <span class="text-sm">股票价格动量</span>
+                                    <span class="text-xs text-gray-400">Stock Price Momentum</span>
+                                </div>
+                                <div class="bg-gray-700/50 rounded-lg p-3 flex justify-between items-center">
+                                    <span class="text-sm">股票价格强度</span>
+                                    <span class="text-xs text-gray-400">Stock Price Strength</span>
+                                </div>
+                                <div class="bg-gray-700/50 rounded-lg p-3 flex justify-between items-center">
+                                    <span class="text-sm">股票价格广度</span>
+                                    <span class="text-xs text-gray-400">Stock Price Breadth</span>
+                                </div>
+                                <div class="bg-gray-700/50 rounded-lg p-3 flex justify-between items-center">
+                                    <span class="text-sm">看跌/看涨期权比率</span>
+                                    <span class="text-xs text-gray-400">Put/Call Options</span>
+                                </div>
+                                <div class="bg-gray-700/50 rounded-lg p-3 flex justify-between items-center">
+                                    <span class="text-sm">市场波动率 (VIX)</span>
+                                    <span class="text-xs text-gray-400">Market Volatility</span>
+                                </div>
+                                <div class="bg-gray-700/50 rounded-lg p-3 flex justify-between items-center">
+                                    <span class="text-sm">避险需求</span>
+                                    <span class="text-xs text-gray-400">Safe Haven Demand</span>
+                                </div>
+                                <div class="bg-gray-700/50 rounded-lg p-3 flex justify-between items-center">
+                                    <span class="text-sm">垃圾债券需求</span>
+                                    <span class="text-xs text-gray-400">Junk Bond Demand</span>
+                                </div>
                             </div>
                         </div>
                     </div>
                 </div>
             </section>
 
-            <!-- 期权数据 -->
-            <section id="options" class="mb-8">
+            <!-- 分析工具资源 -->
+            <section id="resources" class="mb-8">
                 <h2 class="text-2xl font-bold mb-4 flex items-center gap-2">
-                    <i class="fas fa-chart-bar text-purple-400"></i>
-                    期权数据
+                    <i class="fas fa-tools text-purple-400"></i>
+                    专业分析工具
                 </h2>
-                <div class="bg-gray-800/50 rounded-xl p-6 border border-gray-700">
-                    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                        <div>
-                            <h3 class="text-lg font-semibold mb-3">OptionCharts.io</h3>
-                            <p class="text-gray-400 mb-4">查看期权成交量、未平仓合约、最大痛点、隐含波动率和概率分析</p>
-                            <div class="space-y-3">
-                                <div class="bg-gray-700/50 rounded-lg p-3 flex justify-between items-center">
-                                    <span>期权成交量</span>
-                                    <span class="text-blue-400">Option Volume</span>
-                                </div>
-                                <div class="bg-gray-700/50 rounded-lg p-3 flex justify-between items-center">
-                                    <span>未平仓合约</span>
-                                    <span class="text-green-400">Open Interest</span>
-                                </div>
-                                <div class="bg-gray-700/50 rounded-lg p-3 flex justify-between items-center">
-                                    <span>最大痛点</span>
-                                    <span class="text-orange-400">Max Pain</span>
-                                </div>
-                                <div class="bg-gray-700/50 rounded-lg p-3 flex justify-between items-center">
-                                    <span>隐含波动率</span>
-                                    <span class="text-purple-400">Implied Volatility</span>
-                                </div>
+                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                    <a href="https://optioncharts.io/" target="_blank" class="resource-card bg-gray-800/50 rounded-xl p-6 border border-gray-700 block">
+                        <div class="flex items-center gap-4 mb-4">
+                            <div class="w-14 h-14 bg-purple-600 rounded-xl flex items-center justify-center">
+                                <i class="fas fa-chart-pie text-2xl"></i>
                             </div>
-                            <a href="https://optioncharts.io/" target="_blank" 
-                               class="inline-flex items-center gap-2 text-blue-400 hover:text-blue-300 mt-4">
-                                <i class="fas fa-external-link-alt"></i>
-                                访问 OptionCharts.io
-                            </a>
+                            <div>
+                                <h3 class="text-xl font-bold">OptionCharts</h3>
+                                <p class="text-gray-400 text-sm">期权数据分析</p>
+                            </div>
                         </div>
-                        <div class="iframe-container bg-gray-900 rounded-lg overflow-hidden" style="height: 400px;">
-                            <iframe src="https://optioncharts.io/" 
-                                    class="w-full h-full border-0"
-                                    sandbox="allow-scripts allow-same-origin"
-                                    loading="lazy"></iframe>
+                        <p class="text-gray-400 text-sm mb-4">查看期权成交量、未平仓合约、最大痛点、隐含波动率和概率分析</p>
+                        <div class="flex flex-wrap gap-2">
+                            <span class="bg-purple-600/30 text-purple-300 px-2 py-1 rounded text-xs">期权量</span>
+                            <span class="bg-purple-600/30 text-purple-300 px-2 py-1 rounded text-xs">未平仓</span>
+                            <span class="bg-purple-600/30 text-purple-300 px-2 py-1 rounded text-xs">IV</span>
+                            <span class="bg-purple-600/30 text-purple-300 px-2 py-1 rounded text-xs">Max Pain</span>
                         </div>
-                    </div>
-                </div>
-            </section>
+                        <div class="mt-4 text-blue-400 text-sm flex items-center gap-1">
+                            <span>访问网站</span>
+                            <i class="fas fa-arrow-right"></i>
+                        </div>
+                    </a>
 
-            <!-- 暗池数据 -->
-            <section id="darkpool" class="mb-8">
-                <h2 class="text-2xl font-bold mb-4 flex items-center gap-2">
-                    <i class="fas fa-eye-slash text-gray-400"></i>
-                    暗池数据
-                </h2>
-                <div class="bg-gray-800/50 rounded-xl p-6 border border-gray-700">
-                    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                        <div>
-                            <h3 class="text-lg font-semibold mb-3">StockGrid.io</h3>
-                            <p class="text-gray-400 mb-4">追踪机构投资者的暗池交易活动，发现大资金动向</p>
-                            <div class="space-y-3">
-                                <div class="bg-gray-700/50 rounded-lg p-3">
-                                    <div class="flex justify-between items-center">
-                                        <span>暗池净流入</span>
-                                        <span class="text-green-400">Dark Pool Net Flow</span>
-                                    </div>
-                                    <p class="text-xs text-gray-500 mt-1">显示机构买卖差额</p>
-                                </div>
-                                <div class="bg-gray-700/50 rounded-lg p-3">
-                                    <div class="flex justify-between items-center">
-                                        <span>大宗交易</span>
-                                        <span class="text-blue-400">Block Trades</span>
-                                    </div>
-                                    <p class="text-xs text-gray-500 mt-1">大额机构交易追踪</p>
-                                </div>
-                                <div class="bg-gray-700/50 rounded-lg p-3">
-                                    <div class="flex justify-between items-center">
-                                        <span>短期利息</span>
-                                        <span class="text-red-400">Short Interest</span>
-                                    </div>
-                                    <p class="text-xs text-gray-500 mt-1">做空比例分析</p>
-                                </div>
+                    <a href="https://www.stockgrid.io/" target="_blank" class="resource-card bg-gray-800/50 rounded-xl p-6 border border-gray-700 block">
+                        <div class="flex items-center gap-4 mb-4">
+                            <div class="w-14 h-14 bg-gray-600 rounded-xl flex items-center justify-center">
+                                <i class="fas fa-eye-slash text-2xl"></i>
                             </div>
-                            <a href="https://www.stockgrid.io/" target="_blank" 
-                               class="inline-flex items-center gap-2 text-blue-400 hover:text-blue-300 mt-4">
-                                <i class="fas fa-external-link-alt"></i>
-                                访问 StockGrid.io
-                            </a>
+                            <div>
+                                <h3 class="text-xl font-bold">StockGrid</h3>
+                                <p class="text-gray-400 text-sm">暗池数据追踪</p>
+                            </div>
                         </div>
-                        <div class="iframe-container bg-gray-900 rounded-lg overflow-hidden" style="height: 400px;">
-                            <iframe src="https://www.stockgrid.io/" 
-                                    class="w-full h-full border-0"
-                                    sandbox="allow-scripts allow-same-origin"
-                                    loading="lazy"></iframe>
+                        <p class="text-gray-400 text-sm mb-4">追踪机构投资者的暗池交易活动，发现大资金动向和趋势</p>
+                        <div class="flex flex-wrap gap-2">
+                            <span class="bg-gray-600/30 text-gray-300 px-2 py-1 rounded text-xs">暗池流入</span>
+                            <span class="bg-gray-600/30 text-gray-300 px-2 py-1 rounded text-xs">大宗交易</span>
+                            <span class="bg-gray-600/30 text-gray-300 px-2 py-1 rounded text-xs">做空数据</span>
                         </div>
-                    </div>
-                </div>
-            </section>
+                        <div class="mt-4 text-blue-400 text-sm flex items-center gap-1">
+                            <span>访问网站</span>
+                            <i class="fas fa-arrow-right"></i>
+                        </div>
+                    </a>
 
-            <!-- 板块轮动 -->
-            <section id="sectors" class="mb-8">
-                <h2 class="text-2xl font-bold mb-4 flex items-center gap-2">
-                    <i class="fas fa-th-large text-orange-400"></i>
-                    板块轮动
-                </h2>
-                <div class="bg-gray-800/50 rounded-xl p-6 border border-gray-700">
-                    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                        <div>
-                            <h3 class="text-lg font-semibold mb-3">Finviz 股票筛选器</h3>
-                            <p class="text-gray-400 mb-4">可视化市场板块表现，发现热门股票和趋势</p>
-                            
-                            <!-- 板块表现表格 -->
-                            <div class="overflow-x-auto">
-                                <table class="w-full text-sm">
-                                    <thead>
-                                        <tr class="border-b border-gray-600">
-                                            <th class="text-left py-2 text-gray-400">板块</th>
-                                            <th class="text-right py-2 text-gray-400">日涨跌</th>
-                                            <th class="text-right py-2 text-gray-400">周涨跌</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody id="sectorTable">
-                                        <tr class="border-b border-gray-700">
-                                            <td class="py-2">科技</td>
-                                            <td class="py-2 text-right stock-up">+1.2%</td>
-                                            <td class="py-2 text-right stock-up">+3.5%</td>
-                                        </tr>
-                                        <tr class="border-b border-gray-700">
-                                            <td class="py-2">金融</td>
-                                            <td class="py-2 text-right stock-down">-0.5%</td>
-                                            <td class="py-2 text-right stock-up">+1.2%</td>
-                                        </tr>
-                                        <tr class="border-b border-gray-700">
-                                            <td class="py-2">医疗</td>
-                                            <td class="py-2 text-right stock-up">+0.8%</td>
-                                            <td class="py-2 text-right stock-down">-0.3%</td>
-                                        </tr>
-                                        <tr class="border-b border-gray-700">
-                                            <td class="py-2">能源</td>
-                                            <td class="py-2 text-right stock-down">-1.1%</td>
-                                            <td class="py-2 text-right stock-down">-2.1%</td>
-                                        </tr>
-                                        <tr class="border-b border-gray-700">
-                                            <td class="py-2">消费</td>
-                                            <td class="py-2 text-right stock-up">+0.3%</td>
-                                            <td class="py-2 text-right stock-up">+0.8%</td>
-                                        </tr>
-                                    </tbody>
-                                </table>
+                    <a href="https://finviz.com/map.ashx" target="_blank" class="resource-card bg-gray-800/50 rounded-xl p-6 border border-gray-700 block">
+                        <div class="flex items-center gap-4 mb-4">
+                            <div class="w-14 h-14 bg-orange-600 rounded-xl flex items-center justify-center">
+                                <i class="fas fa-th-large text-2xl"></i>
                             </div>
-                            
-                            <a href="https://finviz.com/map.ashx" target="_blank" 
-                               class="inline-flex items-center gap-2 text-blue-400 hover:text-blue-300 mt-4">
-                                <i class="fas fa-external-link-alt"></i>
-                                查看 Finviz 热力图
-                            </a>
+                            <div>
+                                <h3 class="text-xl font-bold">Finviz</h3>
+                                <p class="text-gray-400 text-sm">股票筛选器</p>
+                            </div>
                         </div>
-                        <div class="iframe-container bg-gray-900 rounded-lg overflow-hidden" style="height: 400px;">
-                            <iframe src="https://finviz.com/map.ashx?t=sec" 
-                                    class="w-full h-full border-0"
-                                    sandbox="allow-scripts allow-same-origin"
-                                    loading="lazy"></iframe>
+                        <p class="text-gray-400 text-sm mb-4">可视化市场板块表现热力图，发现热门股票和行业趋势</p>
+                        <div class="flex flex-wrap gap-2">
+                            <span class="bg-orange-600/30 text-orange-300 px-2 py-1 rounded text-xs">热力图</span>
+                            <span class="bg-orange-600/30 text-orange-300 px-2 py-1 rounded text-xs">板块分析</span>
+                            <span class="bg-orange-600/30 text-orange-300 px-2 py-1 rounded text-xs">筛选器</span>
                         </div>
-                    </div>
+                        <div class="mt-4 text-blue-400 text-sm flex items-center gap-1">
+                            <span>访问网站</span>
+                            <i class="fas fa-arrow-right"></i>
+                        </div>
+                    </a>
+
+                    <a href="https://www.tradingview.com/" target="_blank" class="resource-card bg-gray-800/50 rounded-xl p-6 border border-gray-700 block">
+                        <div class="flex items-center gap-4 mb-4">
+                            <div class="w-14 h-14 bg-blue-600 rounded-xl flex items-center justify-center">
+                                <i class="fas fa-chart-line text-2xl"></i>
+                            </div>
+                            <div>
+                                <h3 class="text-xl font-bold">TradingView</h3>
+                                <p class="text-gray-400 text-sm">专业图表平台</p>
+                            </div>
+                        </div>
+                        <p class="text-gray-400 text-sm mb-4">专业级股票图表和技术分析工具，支持多种指标和画图工具</p>
+                        <div class="flex flex-wrap gap-2">
+                            <span class="bg-blue-600/30 text-blue-300 px-2 py-1 rounded text-xs">K线图</span>
+                            <span class="bg-blue-600/30 text-blue-300 px-2 py-1 rounded text-xs">技术指标</span>
+                            <span class="bg-blue-600/30 text-blue-300 px-2 py-1 rounded text-xs">社区</span>
+                        </div>
+                        <div class="mt-4 text-blue-400 text-sm flex items-center gap-1">
+                            <span>访问网站</span>
+                            <i class="fas fa-arrow-right"></i>
+                        </div>
+                    </a>
+
+                    <a href="https://www.barchart.com/" target="_blank" class="resource-card bg-gray-800/50 rounded-xl p-6 border border-gray-700 block">
+                        <div class="flex items-center gap-4 mb-4">
+                            <div class="w-14 h-14 bg-green-600 rounded-xl flex items-center justify-center">
+                                <i class="fas fa-chart-bar text-2xl"></i>
+                            </div>
+                            <div>
+                                <h3 class="text-xl font-bold">Barchart</h3>
+                                <p class="text-gray-400 text-sm">综合行情数据</p>
+                            </div>
+                        </div>
+                        <p class="text-gray-400 text-sm mb-4">股票、期货、外汇综合数据平台，提供期权异动和技术分析</p>
+                        <div class="flex flex-wrap gap-2">
+                            <span class="bg-green-600/30 text-green-300 px-2 py-1 rounded text-xs">期权异动</span>
+                            <span class="bg-green-600/30 text-green-300 px-2 py-1 rounded text-xs">期货</span>
+                            <span class="bg-green-600/30 text-green-300 px-2 py-1 rounded text-xs">排行榜</span>
+                        </div>
+                        <div class="mt-4 text-blue-400 text-sm flex items-center gap-1">
+                            <span>访问网站</span>
+                            <i class="fas fa-arrow-right"></i>
+                        </div>
+                    </a>
+
+                    <a href="https://finance.yahoo.com/" target="_blank" class="resource-card bg-gray-800/50 rounded-xl p-6 border border-gray-700 block">
+                        <div class="flex items-center gap-4 mb-4">
+                            <div class="w-14 h-14 bg-violet-600 rounded-xl flex items-center justify-center">
+                                <i class="fas fa-newspaper text-2xl"></i>
+                            </div>
+                            <div>
+                                <h3 class="text-xl font-bold">Yahoo Finance</h3>
+                                <p class="text-gray-400 text-sm">财经新闻资讯</p>
+                            </div>
+                        </div>
+                        <p class="text-gray-400 text-sm mb-4">获取最新财经新闻、公司财报、分析师评级和市场动态</p>
+                        <div class="flex flex-wrap gap-2">
+                            <span class="bg-violet-600/30 text-violet-300 px-2 py-1 rounded text-xs">财报</span>
+                            <span class="bg-violet-600/30 text-violet-300 px-2 py-1 rounded text-xs">新闻</span>
+                            <span class="bg-violet-600/30 text-violet-300 px-2 py-1 rounded text-xs">评级</span>
+                        </div>
+                        <div class="mt-4 text-blue-400 text-sm flex items-center gap-1">
+                            <span>访问网站</span>
+                            <i class="fas fa-arrow-right"></i>
+                        </div>
+                    </a>
                 </div>
             </section>
 
@@ -505,8 +532,7 @@
                     学习资源
                 </h2>
                 <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                    <!-- 期权教学 -->
-                    <div class="bg-gray-800/50 rounded-xl p-6 border border-gray-700 card-hover transition-all duration-300">
+                    <a href="https://youtu.be/4_hyWzEnFno?si=0Tnp27GH124XTzqw" target="_blank" class="resource-card bg-gray-800/50 rounded-xl p-6 border border-gray-700 block">
                         <div class="flex items-center gap-3 mb-4">
                             <div class="w-12 h-12 bg-red-600 rounded-lg flex items-center justify-center">
                                 <i class="fab fa-youtube text-2xl"></i>
@@ -517,15 +543,13 @@
                             </div>
                         </div>
                         <p class="text-gray-400 text-sm mb-4">学习期权交易的基础知识，包括看涨期权、看跌期权、价差策略等</p>
-                        <a href="https://youtu.be/4_hyWzEnFno?si=0Tnp27GH124XTzqw" target="_blank"
-                           class="inline-flex items-center gap-2 text-red-400 hover:text-red-300">
+                        <div class="text-red-400 text-sm flex items-center gap-1">
                             <i class="fas fa-play-circle"></i>
-                            观看视频
-                        </a>
-                    </div>
+                            <span>观看视频</span>
+                        </div>
+                    </a>
 
-                    <!-- 读财报 -->
-                    <div class="bg-gray-800/50 rounded-xl p-6 border border-gray-700 card-hover transition-all duration-300">
+                    <a href="https://youtube.com/@brianferoldiyt?si=6daGfEdmTRLRUnFz" target="_blank" class="resource-card bg-gray-800/50 rounded-xl p-6 border border-gray-700 block">
                         <div class="flex items-center gap-3 mb-4">
                             <div class="w-12 h-12 bg-blue-600 rounded-lg flex items-center justify-center">
                                 <i class="fas fa-file-invoice-dollar text-2xl"></i>
@@ -536,15 +560,13 @@
                             </div>
                         </div>
                         <p class="text-gray-400 text-sm mb-4">学习如何分析公司财务报表，识别优质投资标的</p>
-                        <a href="https://youtube.com/@brianferoldiyt?si=6daGfEdmTRLRUnFz" target="_blank"
-                           class="inline-flex items-center gap-2 text-blue-400 hover:text-blue-300">
+                        <div class="text-blue-400 text-sm flex items-center gap-1">
                             <i class="fas fa-play-circle"></i>
-                            访问频道
-                        </a>
-                    </div>
+                            <span>访问频道</span>
+                        </div>
+                    </a>
 
-                    <!-- 支撑阻力位 -->
-                    <div class="bg-gray-800/50 rounded-xl p-6 border border-gray-700 card-hover transition-all duration-300">
+                    <a href="https://youtu.be/fj4jSlsLECI?si=g7UoFiZfKINLOrEs" target="_blank" class="resource-card bg-gray-800/50 rounded-xl p-6 border border-gray-700 block">
                         <div class="flex items-center gap-3 mb-4">
                             <div class="w-12 h-12 bg-green-600 rounded-lg flex items-center justify-center">
                                 <i class="fas fa-chart-line text-2xl"></i>
@@ -555,22 +577,21 @@
                             </div>
                         </div>
                         <p class="text-gray-400 text-sm mb-4">掌握支撑位和阻力位的识别方法，提升交易时机把握</p>
-                        <a href="https://youtu.be/fj4jSlsLECI?si=g7UoFiZfKINLOrEs" target="_blank"
-                           class="inline-flex items-center gap-2 text-green-400 hover:text-green-300">
+                        <div class="text-green-400 text-sm flex items-center gap-1">
                             <i class="fas fa-play-circle"></i>
-                            观看视频
-                        </a>
-                    </div>
+                            <span>观看视频</span>
+                        </div>
+                    </a>
                 </div>
             </section>
 
-            <!-- 外部资源链接 -->
-            <section id="resources" class="mb-8">
+            <!-- 快速链接 -->
+            <section id="quick-links" class="mb-8">
                 <h2 class="text-2xl font-bold mb-4 flex items-center gap-2">
                     <i class="fas fa-link text-cyan-400"></i>
-                    常用资源
+                    快速链接
                 </h2>
-                <div class="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4">
+                <div class="grid grid-cols-3 md:grid-cols-6 gap-4">
                     <a href="https://optioncharts.io/" target="_blank" 
                        class="bg-gray-800/50 rounded-xl p-4 border border-gray-700 text-center card-hover transition-all duration-300">
                         <i class="fas fa-chart-pie text-3xl text-purple-400 mb-2"></i>
@@ -612,26 +633,65 @@
         </footer>
     </main>
 
+    <!-- TradingView Widget Script -->
+    <script type="text/javascript" src="https://s3.tradingview.com/tv.js"></script>
+    
     <script>
-        // 切换侧边栏
+        let tvWidget = null;
+        
         function toggleSidebar() {
             const sidebar = document.getElementById('sidebar');
             sidebar.classList.toggle('open');
         }
 
-        // 滚动到指定部分
         function scrollToSection(sectionId) {
             const section = document.getElementById(sectionId);
             if (section) {
                 section.scrollIntoView({ behavior: 'smooth' });
             }
-            // 移动端关闭侧边栏
             if (window.innerWidth < 768) {
                 toggleSidebar();
             }
         }
 
-        // 搜索股票
+        function loadTradingViewChart(symbol) {
+            const container = document.getElementById('tv-chart-container');
+            container.innerHTML = '';
+            
+            if (typeof TradingView !== 'undefined') {
+                tvWidget = new TradingView.widget({
+                    "autosize": true,
+                    "symbol": symbol,
+                    "interval": "D",
+                    "timezone": "America/New_York",
+                    "theme": "dark",
+                    "style": "1",
+                    "locale": "zh_CN",
+                    "toolbar_bg": "#131722",
+                    "enable_publishing": false,
+                    "hide_top_toolbar": false,
+                    "hide_legend": false,
+                    "save_image": true,
+                    "container_id": "tv-chart-container",
+                    "studies": [
+                        "MASimple@tv-basicstudies",
+                        "RSI@tv-basicstudies",
+                        "MACD@tv-basicstudies"
+                    ]
+                });
+            } else {
+                container.innerHTML = `
+                    <div style="height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center;">
+                        <p class="text-gray-400 mb-4">图表加载中...</p>
+                        <a href="https://www.tradingview.com/chart/?symbol=${symbol}" target="_blank" 
+                           class="bg-blue-600 hover:bg-blue-700 px-4 py-2 rounded-lg">
+                            在 TradingView 中查看 ${symbol}
+                        </a>
+                    </div>
+                `;
+            }
+        }
+
         async function searchStock() {
             const ticker = document.getElementById('stockInput').value.trim().toUpperCase();
             if (!ticker) {
@@ -640,13 +700,13 @@
             }
 
             try {
-                // 显示加载状态
                 document.getElementById('stockInfoCard').classList.remove('hidden');
                 document.getElementById('stockSymbol').textContent = ticker;
                 document.getElementById('stockName').textContent = '加载中...';
                 document.getElementById('stockPrice').textContent = '--';
 
-                // 调用 API 获取股票信息
+                loadTradingViewChart(ticker);
+
                 const response = await fetch(`/api/stock/${ticker}`);
                 if (!response.ok) {
                     throw new Error('获取股票信息失败');
@@ -662,7 +722,6 @@
             }
         }
 
-        // 更新股票信息显示
         function updateStockInfo(data) {
             document.getElementById('stockSymbol').textContent = data.symbol || '--';
             document.getElementById('stockName').textContent = data.name || '--';
@@ -681,7 +740,6 @@
                 changeEl.className = 'text-lg stock-down';
             }
 
-            // 基础数据
             document.getElementById('stockOpen').textContent = formatNumber(data.open || data.regularMarketOpen);
             document.getElementById('stockHigh').textContent = formatNumber(data.high || data.regularMarketDayHigh);
             document.getElementById('stockLow').textContent = formatNumber(data.low || data.regularMarketDayLow);
@@ -689,14 +747,12 @@
             document.getElementById('stockMarketCap').textContent = formatMarketCap(data.marketCap);
             document.getElementById('stockPE').textContent = formatNumber(data.peRatio || data.trailingPE);
 
-            // 基本面数据
             document.getElementById('stockEPS').textContent = formatNumber(data.eps || data.trailingEps);
             document.getElementById('stockPB').textContent = formatNumber(data.pbRatio || data.priceToBook);
             document.getElementById('stockDividend').textContent = data.dividendYield ? `${(data.dividendYield * 100).toFixed(2)}%` : '--';
             document.getElementById('stock52High').textContent = formatNumber(data.fiftyTwoWeekHigh);
             document.getElementById('stock52Low').textContent = formatNumber(data.fiftyTwoWeekLow);
 
-            // 技术指标
             document.getElementById('stockMA50').textContent = formatNumber(data.fiftyDayAverage);
             document.getElementById('stockMA200').textContent = formatNumber(data.twoHundredDayAverage);
             document.getElementById('stockRSI').textContent = formatNumber(data.rsi);
@@ -704,16 +760,12 @@
             document.getElementById('stockAvgVolume').textContent = formatVolume(data.averageVolume);
         }
 
-        // 格式化数字
         function formatNumber(num) {
             if (num === undefined || num === null) return '--';
-            if (typeof num === 'number') {
-                return num.toFixed(2);
-            }
+            if (typeof num === 'number') return num.toFixed(2);
             return num;
         }
 
-        // 格式化成交量
         function formatVolume(vol) {
             if (!vol) return '--';
             if (vol >= 1e9) return (vol / 1e9).toFixed(2) + 'B';
@@ -722,7 +774,6 @@
             return vol.toString();
         }
 
-        // 格式化市值
         function formatMarketCap(cap) {
             if (!cap) return '--';
             if (cap >= 1e12) return '$' + (cap / 1e12).toFixed(2) + 'T';
@@ -731,14 +782,12 @@
             return '$' + cap.toString();
         }
 
-        // 更新外部链接
         function updateExternalLinks(ticker) {
             document.getElementById('linkOptionCharts').href = `https://optioncharts.io/options/${ticker}`;
             document.getElementById('linkFinviz').href = `https://finviz.com/quote.ashx?t=${ticker}`;
             document.getElementById('linkTradingView').href = `https://www.tradingview.com/symbols/${ticker}/`;
         }
 
-        // 跳转到 AI 分析
         function goToAnalyze() {
             const ticker = document.getElementById('stockInput').value.trim().toUpperCase();
             if (ticker) {
@@ -748,7 +797,6 @@
             }
         }
 
-        // 加载市场概览数据
         async function loadMarketOverview() {
             try {
                 const response = await fetch('/api/market/overview');
@@ -761,6 +809,9 @@
                 }
             } catch (error) {
                 console.error('Failed to load market overview:', error);
+                ['spy', 'qqq', 'dia', 'iwm'].forEach(id => {
+                    document.getElementById(`${id}Price`).textContent = '点击刷新';
+                });
             }
         }
 
@@ -780,48 +831,36 @@
             }
         }
 
-        // 模拟恐慌贪婪指数
         function loadFearGreedIndex() {
-            // 模拟数据 (实际应从 API 获取)
-            const index = Math.floor(Math.random() * 100);
+            const index = 45 + Math.floor(Math.random() * 20);
             let label = '';
+            let color = '';
             
-            if (index <= 25) label = '极度恐慌';
-            else if (index <= 45) label = '恐慌';
-            else if (index <= 55) label = '中性';
-            else if (index <= 75) label = '贪婪';
-            else label = '极度贪婪';
+            if (index <= 25) { label = '极度恐慌'; color = 'text-red-400'; }
+            else if (index <= 45) { label = '恐慌'; color = 'text-orange-400'; }
+            else if (index <= 55) { label = '中性'; color = 'text-yellow-400'; }
+            else if (index <= 75) { label = '贪婪'; color = 'text-lime-400'; }
+            else { label = '极度贪婪'; color = 'text-green-400'; }
 
             document.getElementById('fearIndex').textContent = index;
+            document.getElementById('fearIndex').className = `text-4xl font-bold ${color}`;
             document.getElementById('fearLabel').textContent = label;
+            document.getElementById('fearLabel').className = `text-lg ${color}`;
             
-            // 移动指针
             const pointer = document.getElementById('fearGaugePointer');
             pointer.style.left = `calc(${index}% - 8px)`;
         }
 
-        // 隐藏 iframe 加载器
-        function hideIframeLoaders() {
-            setTimeout(() => {
-                const loaders = document.querySelectorAll('[id$="IframeLoader"]');
-                loaders.forEach(loader => loader.style.display = 'none');
-            }, 3000);
-        }
-
-        // 回车搜索
         document.getElementById('stockInput').addEventListener('keypress', function(e) {
             if (e.key === 'Enter') {
                 searchStock();
             }
         });
 
-        // 页面加载时
         document.addEventListener('DOMContentLoaded', function() {
             loadMarketOverview();
             loadFearGreedIndex();
-            hideIframeLoaders();
 
-            // 检查 URL 参数
             const urlParams = new URLSearchParams(window.location.search);
             const ticker = urlParams.get('ticker');
             if (ticker) {
