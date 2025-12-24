@@ -1,11 +1,12 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>TradingAgents - AI Trading Analysis</title>
+    <title>AI 分析 - TradingAgents</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
     <style>
         body { font-family: 'Inter', sans-serif; }
         .gradient-bg {
@@ -35,18 +36,25 @@
     <div class="container mx-auto px-4 py-8 max-w-6xl">
         <!-- Header -->
         <header class="text-center mb-12 relative">
+            <!-- Navigation -->
+            <div class="absolute left-0 top-0 flex gap-2">
+                <a href="/dashboard" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm flex items-center space-x-2 transition-colors">
+                    <i class="fas fa-home"></i>
+                    <span>信息中心</span>
+                </a>
+            </div>
             <!-- Logout Button -->
             <a href="/logout" class="absolute right-0 top-0 bg-gray-700 hover:bg-gray-600 text-gray-300 px-4 py-2 rounded-lg text-sm flex items-center space-x-2 transition-colors">
-                <span>🚪</span>
-                <span>Logout</span>
+                <i class="fas fa-sign-out-alt"></i>
+                <span>退出</span>
             </a>
             
             <h1 class="text-5xl font-bold mb-4">
                 🤖 <span class="bg-gradient-to-r from-blue-400 to-purple-500 bg-clip-text text-transparent">TradingAgents</span>
             </h1>
-            <p class="text-gray-400 text-lg">Multi-Agent LLM Financial Trading Framework</p>
+            <p class="text-gray-400 text-lg">多智能体 AI 金融交易分析框架</p>
             <p class="text-gray-500 text-sm mt-2">
-                Analyst Team → Research Team → Trader → Risk Management → Portfolio Management
+                分析团队 → 研究团队 → 交易员 → 风险管理 → 投资组合管理
             </p>
         </header>
 
@@ -56,28 +64,28 @@
             <div class="lg:col-span-1">
                 <div class="card rounded-2xl p-6 sticky top-8">
                     <h2 class="text-xl font-semibold mb-6 flex items-center">
-                        <span class="mr-2">⚙️</span> Configuration
+                        <span class="mr-2">⚙️</span> 配置
                     </h2>
                     
                     <form id="analysisForm" class="space-y-5">
                         <!-- Ticker -->
                         <div>
-                            <label class="block text-sm font-medium text-gray-300 mb-2">Stock Ticker</label>
+                            <label class="block text-sm font-medium text-gray-300 mb-2">股票代码</label>
                             <input type="text" id="ticker" value="NVDA" 
                                 class="w-full bg-gray-800 border border-gray-700 rounded-lg px-4 py-2.5 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                                placeholder="e.g., AAPL, NVDA, META">
+                                placeholder="例如: AAPL, NVDA, META">
                         </div>
 
                         <!-- Date -->
                         <div>
-                            <label class="block text-sm font-medium text-gray-300 mb-2">Analysis Date</label>
+                            <label class="block text-sm font-medium text-gray-300 mb-2">分析日期</label>
                             <input type="date" id="date" 
                                 class="w-full bg-gray-800 border border-gray-700 rounded-lg px-4 py-2.5 focus:ring-2 focus:ring-blue-500 focus:border-transparent">
                         </div>
 
                         <!-- LLM Provider -->
                         <div>
-                            <label class="block text-sm font-medium text-gray-300 mb-2">LLM Provider</label>
+                            <label class="block text-sm font-medium text-gray-300 mb-2">LLM 提供商</label>
                             <select id="llmProvider" 
                                 class="w-full bg-gray-800 border border-gray-700 rounded-lg px-4 py-2.5 focus:ring-2 focus:ring-blue-500">
                                 <option value="deepseek" selected>DeepSeek (推荐)</option>

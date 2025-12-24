@@ -203,10 +203,18 @@ def save_to_history(task_id: str, request, status: str, decision_summary: Option
     save_history_to_disk()
 
 
+# ============== TEST MODE ==============
+TEST_MODE = os.getenv("TEST_MODE", "false").lower() == "true"
+
+
 def translate_text_sync(text: str, target_lang: str = "zh") -> str:
     """Translate text using available LLM - synchronous version"""
     if not text or len(text.strip()) == 0:
         return ""
+    
+    # TEST MODE: Return mock translation
+    if TEST_MODE:
+        return f"[中文翻译] {text[:200]}..." if len(text) > 200 else f"[中文翻译] {text}"
     
     lang_names = {
         "zh": "Chinese (Simplified)",
@@ -278,11 +286,193 @@ def translate_result(result: dict) -> dict:
     return translated
 
 
+def get_mock_analysis_result(ticker: str, date: str) -> dict:
+    """Generate mock analysis result for testing"""
+    import time
+    time.sleep(2)  # Simulate processing time
+    
+    return {
+        "ticker": ticker,
+        "date": date,
+        "decision": f"""## Trading Recommendation for {ticker}
+
+Based on our comprehensive multi-agent analysis, we recommend a **MODERATE BUY** position for {ticker}.
+
+### Key Factors:
+1. **Technical Analysis**: The stock shows bullish momentum with RSI at 58
+2. **Fundamental Strength**: P/E ratio is reasonable at 22.5x
+3. **Market Sentiment**: Positive social media sentiment (65% bullish)
+4. **News Impact**: Recent product announcements are favorable
+
+### Risk Assessment:
+- Volatility: Medium
+- Market Risk: Low to Medium
+- Sector Risk: Low
+
+### Suggested Action:
+Consider accumulating shares at current levels with a 6-month horizon.""",
+        "reports": {
+            "market": f"""## Market Analysis Report for {ticker}
+
+### Price Action
+- Current Price: $185.50
+- 52-Week High: $199.62
+- 52-Week Low: $124.17
+- Average Volume: 52.3M shares
+
+### Technical Indicators
+- RSI (14): 58.2 (Neutral-Bullish)
+- MACD: Bullish crossover detected
+- Moving Averages: Price above 50-day and 200-day MA
+- Bollinger Bands: Price in upper half
+
+### Support & Resistance
+- Key Support: $175.00
+- Key Resistance: $195.00
+- Trend: Upward channel formation
+
+### Volume Analysis
+Recent volume surge indicates institutional accumulation.""",
+            
+            "news": f"""## News Analysis Report for {ticker}
+
+### Recent Headlines
+1. **{ticker} Announces New AI Product Line** (2 days ago)
+   - Sentiment: Very Positive
+   - Market Impact: High
+   
+2. **Quarterly Earnings Beat Expectations** (1 week ago)
+   - EPS: $2.15 vs $1.98 expected
+   - Revenue: $35.2B vs $33.8B expected
+
+3. **Strategic Partnership Announced** (2 weeks ago)
+   - Partnership with major cloud provider
+   - Expected to boost enterprise sales
+
+### News Sentiment Score: 78/100 (Bullish)
+
+### Key Takeaways
+- Strong product pipeline
+- Positive earnings momentum
+- Expanding market presence""",
+            
+            "fundamentals": f"""## Fundamentals Analysis for {ticker}
+
+### Valuation Metrics
+- P/E Ratio: 22.5x (Industry avg: 25.3x)
+- P/S Ratio: 8.2x
+- P/B Ratio: 12.1x
+- EV/EBITDA: 18.3x
+
+### Financial Health
+- Revenue Growth (YoY): 25.3%
+- Net Profit Margin: 28.5%
+- ROE: 45.2%
+- Debt/Equity: 0.42
+
+### Cash Flow
+- Operating Cash Flow: $18.5B
+- Free Cash Flow: $12.3B
+- Cash Position: $28.7B
+
+### Growth Prospects
+- 5-Year Revenue CAGR: 22%
+- Analyst Consensus: Outperform
+- Average Price Target: $210
+
+### Dividend
+- Dividend Yield: 0.52%
+- Payout Ratio: 12%""",
+            
+            "sentiment": f"""## Social Sentiment Analysis for {ticker}
+
+### Overall Sentiment Score: 72/100
+
+### Social Media Analysis
+- Twitter/X Mentions: 15,420 (last 24h)
+- Reddit Discussions: 2,340 threads
+- StockTwits Activity: Very High
+
+### Sentiment Breakdown
+- Bullish: 65%
+- Neutral: 22%
+- Bearish: 13%
+
+### Key Topics Trending
+1. AI integration and growth potential
+2. Strong earnings performance
+3. New product announcements
+4. Institutional buying activity
+
+### Influencer Sentiment
+- Tech analysts: Mostly positive
+- Financial media: Cautiously optimistic
+- Retail investors: Very bullish
+
+### Social Volume Trend
+Volume up 45% compared to 7-day average, indicating heightened interest."""
+        },
+        "investment_plan": f"""## Investment Plan for {ticker}
+
+### Position Sizing
+- Recommended allocation: 3-5% of portfolio
+- Entry strategy: Dollar-cost averaging over 2-3 weeks
+
+### Entry Points
+- Primary entry: Current price ($185.50)
+- Secondary entry: $175-178 (on pullback)
+
+### Exit Strategy
+- Target 1: $200 (take 30% profit)
+- Target 2: $215 (take 40% profit)
+- Final target: $230+ (hold remainder)
+
+### Stop Loss
+- Initial stop: $165 (10.8% downside)
+- Trailing stop: 15% from peak
+
+### Timeline
+- Investment horizon: 6-12 months
+- Review frequency: Monthly""",
+        "final_decision": f"""## Final Trading Decision
+
+**Action: MODERATE BUY**
+
+| Metric | Value |
+|--------|-------|
+| Ticker | {ticker} |
+| Direction | Long |
+| Confidence | 72% |
+| Risk Level | Medium |
+| Time Horizon | 6-12 months |
+
+**Summary**: {ticker} presents a favorable risk-reward opportunity based on strong fundamentals, positive sentiment, and technical setup. Recommend gradual accumulation with defined risk parameters."""
+    }
+
+
 def run_analysis_sync(task_id: str, request: AnalysisRequest):
     """Run analysis synchronously (called in background)"""
     try:
         analysis_tasks[task_id]["status"] = "running"
         analysis_tasks[task_id]["progress"] = "Initializing agents..."
+        
+        # TEST MODE: Use mock data
+        if TEST_MODE:
+            analysis_tasks[task_id]["progress"] = f"[TEST MODE] Generating mock analysis for {request.ticker}..."
+            result = get_mock_analysis_result(request.ticker, request.date)
+            
+            # Auto-translate to Chinese (mock)
+            analysis_tasks[task_id]["progress"] = "[TEST MODE] Generating mock translation..."
+            translated = translate_result(result)
+            result["translated"] = translated
+            
+            analysis_tasks[task_id]["status"] = "completed"
+            analysis_tasks[task_id]["result"] = result
+            analysis_tasks[task_id]["progress"] = "Analysis complete!"
+            
+            decision_summary = result["decision"][:100] + "..."
+            save_to_history(task_id, analysis_tasks[task_id]["request"], "completed", decision_summary, full_result=result)
+            return
         
         # Create config
         config = DEFAULT_CONFIG.copy()
@@ -430,11 +620,13 @@ async def login(request: Request, username: str = Form(...), password: str = For
     if username == AUTH_USERNAME and verify_password(password):
         token = create_session()
         response = RedirectResponse(url="/", status_code=302)
+        # Check if running in production (Railway sets PORT env var)
+        is_production = os.environ.get("RAILWAY_ENVIRONMENT") or os.environ.get("PORT")
         response.set_cookie(
             key="session_token",
             value=token,
             httponly=True,
-            secure=True,  # Use HTTPS in production
+            secure=bool(is_production),  # Only use secure cookie in production (HTTPS)
             samesite="lax",
             max_age=86400  # 24 hours
         )
@@ -462,15 +654,37 @@ async def logout(request: Request):
 
 @app.get("/", response_class=HTMLResponse)
 async def root(request: Request):
-    """Serve the main HTML page (protected)"""
-    # Check authentication
+    """Redirect to dashboard"""
+    token = get_session_token(request)
+    if not verify_session(token):
+        return RedirectResponse(url="/login", status_code=302)
+    return RedirectResponse(url="/dashboard", status_code=302)
+
+
+@app.get("/dashboard", response_class=HTMLResponse)
+async def dashboard(request: Request):
+    """Serve the dashboard page (protected)"""
+    token = get_session_token(request)
+    if not verify_session(token):
+        return RedirectResponse(url="/login", status_code=302)
+    
+    html_path = os.path.join(os.path.dirname(__file__), "templates", "dashboard.html")
+    if os.path.exists(html_path):
+        with open(html_path, "r", encoding="utf-8") as f:
+            return HTMLResponse(content=f.read())
+    return RedirectResponse(url="/analyze", status_code=302)
+
+
+@app.get("/analyze", response_class=HTMLResponse)
+async def analyze_page(request: Request):
+    """Serve the analysis page (protected)"""
     token = get_session_token(request)
     if not verify_session(token):
         return RedirectResponse(url="/login", status_code=302)
     
     html_path = os.path.join(os.path.dirname(__file__), "templates", "index.html")
     if os.path.exists(html_path):
-        with open(html_path, "r") as f:
+        with open(html_path, "r", encoding="utf-8") as f:
             return HTMLResponse(content=f.read())
     return HTMLResponse(content=get_default_html())
 
@@ -479,6 +693,78 @@ async def root(request: Request):
 async def health_check():
     """Health check endpoint (public)"""
     return {"status": "healthy", "timestamp": datetime.now().isoformat()}
+
+
+# ============== Stock Data APIs ==============
+@app.get("/api/stock/{ticker}")
+async def get_stock_info(request: Request, ticker: str):
+    """Get stock information by ticker (protected)"""
+    token = get_session_token(request)
+    if not verify_session(token):
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    
+    try:
+        import yfinance as yf
+        stock = yf.Ticker(ticker.upper())
+        info = stock.info
+        
+        return {
+            "symbol": info.get("symbol", ticker.upper()),
+            "name": info.get("longName") or info.get("shortName", "N/A"),
+            "price": info.get("regularMarketPrice") or info.get("currentPrice"),
+            "change": info.get("regularMarketChange", 0),
+            "changePercent": info.get("regularMarketChangePercent", 0),
+            "open": info.get("regularMarketOpen"),
+            "high": info.get("regularMarketDayHigh"),
+            "low": info.get("regularMarketDayLow"),
+            "volume": info.get("regularMarketVolume"),
+            "marketCap": info.get("marketCap"),
+            "peRatio": info.get("trailingPE"),
+            "eps": info.get("trailingEps"),
+            "pbRatio": info.get("priceToBook"),
+            "dividendYield": info.get("dividendYield"),
+            "fiftyTwoWeekHigh": info.get("fiftyTwoWeekHigh"),
+            "fiftyTwoWeekLow": info.get("fiftyTwoWeekLow"),
+            "fiftyDayAverage": info.get("fiftyDayAverage"),
+            "twoHundredDayAverage": info.get("twoHundredDayAverage"),
+            "beta": info.get("beta"),
+            "averageVolume": info.get("averageVolume"),
+            "sector": info.get("sector"),
+            "industry": info.get("industry"),
+            "description": info.get("longBusinessSummary", "")[:500] if info.get("longBusinessSummary") else ""
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to fetch stock data: {str(e)}")
+
+
+@app.get("/api/market/overview")
+async def get_market_overview(request: Request):
+    """Get market overview data (protected)"""
+    token = get_session_token(request)
+    if not verify_session(token):
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    
+    try:
+        import yfinance as yf
+        
+        tickers = ["SPY", "QQQ", "DIA", "IWM"]
+        result = {}
+        
+        for ticker in tickers:
+            try:
+                stock = yf.Ticker(ticker)
+                info = stock.info
+                result[ticker] = {
+                    "price": info.get("regularMarketPrice") or info.get("previousClose", 0),
+                    "change": info.get("regularMarketChange", 0),
+                    "changePercent": info.get("regularMarketChangePercent", 0)
+                }
+            except:
+                result[ticker] = {"price": 0, "change": 0, "changePercent": 0}
+        
+        return result
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to fetch market data: {str(e)}")
 
 
 @app.post("/api/analyze")
