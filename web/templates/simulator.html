@@ -1,0 +1,824 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>模拟交易 - TradingAgents</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        .trade-profitable { background-color: rgba(34, 197, 94, 0.1); border-left: 4px solid #22c55e; }
+        .trade-losing { background-color: rgba(239, 68, 68, 0.1); border-left: 4px solid #ef4444; }
+        .trade-open { background-color: rgba(59, 130, 246, 0.1); border-left: 4px solid #3b82f6; }
+        .strategy-tag {
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: 12px;
+            font-size: 0.75rem;
+            font-weight: 600;
+        }
+        .strategy-momentum { background-color: #fbbf24; color: #1f2937; }
+        .strategy-value { background-color: #60a5fa; color: #1f2937; }
+        .strategy-swing { background-color: #a78bfa; color: #1f2937; }
+        .strategy-scalp { background-color: #f472b6; color: #1f2937; }
+        .strategy-dividend { background-color: #34d399; color: #1f2937; }
+        .strategy-covered_call { background-color: #fb923c; color: #1f2937; }
+        .strategy-wheel { background-color: #2dd4bf; color: #1f2937; }
+        .strategy-other { background-color: #9ca3af; color: #1f2937; }
+        .asset-stock { color: #3b82f6; }
+        .asset-call { color: #22c55e; }
+        .asset-put { color: #ef4444; }
+        .asset-spread { color: #a855f7; }
+        .modal { display: none; }
+        .modal.active { display: flex; }
+    </style>
+</head>
+<body class="bg-gray-900 text-white min-h-screen">
+    <!-- Navigation -->
+    <nav class="bg-gray-800 border-b border-gray-700 px-4 py-3">
+        <div class="max-w-7xl mx-auto flex justify-between items-center">
+            <div class="flex items-center space-x-4">
+                <a href="/dashboard" class="text-xl font-bold text-blue-400 hover:text-blue-300">
+                    <i class="fas fa-chart-line mr-2"></i>TradingAgents
+                </a>
+                <span class="text-gray-500">|</span>
+                <span class="text-lg">📈 模拟交易</span>
+            </div>
+            <div class="flex items-center space-x-4">
+                <a href="/dashboard" class="text-gray-300 hover:text-white px-3 py-2">
+                    <i class="fas fa-home mr-1"></i> 首页
+                </a>
+                <a href="/" class="text-gray-300 hover:text-white px-3 py-2">
+                    <i class="fas fa-robot mr-1"></i> AI分析
+                </a>
+                <a href="/journal" class="text-gray-300 hover:text-white px-3 py-2">
+                    <i class="fas fa-book mr-1"></i> 日记
+                </a>
+                <span id="userInfo" class="text-gray-400"></span>
+            </div>
+        </div>
+    </nav>
+
+    <div class="max-w-7xl mx-auto px-4 py-6">
+        <!-- Portfolio Summary Cards -->
+        <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+            <div class="bg-gray-800 rounded-lg p-4 border border-gray-700">
+                <div class="text-gray-400 text-sm mb-1">当前余额</div>
+                <div id="currentBalance" class="text-2xl font-bold text-green-400">$0.00</div>
+                <div id="balanceChange" class="text-sm text-gray-500">--</div>
+            </div>
+            <div class="bg-gray-800 rounded-lg p-4 border border-gray-700">
+                <div class="text-gray-400 text-sm mb-1">总盈亏</div>
+                <div id="totalPnl" class="text-2xl font-bold">$0.00</div>
+                <div id="totalPnlPct" class="text-sm text-gray-500">0.00%</div>
+            </div>
+            <div class="bg-gray-800 rounded-lg p-4 border border-gray-700">
+                <div class="text-gray-400 text-sm mb-1">胜率</div>
+                <div id="winRate" class="text-2xl font-bold text-blue-400">0%</div>
+                <div id="winLossCount" class="text-sm text-gray-500">0 胜 / 0 负</div>
+            </div>
+            <div class="bg-gray-800 rounded-lg p-4 border border-gray-700">
+                <div class="text-gray-400 text-sm mb-1">持仓数量</div>
+                <div id="openPositions" class="text-2xl font-bold text-yellow-400">0</div>
+                <div id="totalTrades" class="text-sm text-gray-500">总交易: 0</div>
+            </div>
+        </div>
+
+        <!-- Main Content -->
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            <!-- Left Column: Portfolio & New Trade -->
+            <div class="lg:col-span-1 space-y-6">
+                <!-- Portfolio Selection -->
+                <div class="bg-gray-800 rounded-lg p-4 border border-gray-700">
+                    <div class="flex justify-between items-center mb-4">
+                        <h2 class="text-lg font-semibold"><i class="fas fa-wallet mr-2 text-blue-400"></i>投资组合</h2>
+                        <button onclick="showNewPortfolioModal()" class="bg-blue-600 hover:bg-blue-700 px-3 py-1 rounded text-sm">
+                            <i class="fas fa-plus mr-1"></i>新建
+                        </button>
+                    </div>
+                    <div id="portfolioList" class="space-y-2">
+                        <div class="text-gray-500 text-center py-4">加载中...</div>
+                    </div>
+                </div>
+
+                <!-- New Trade Form -->
+                <div class="bg-gray-800 rounded-lg p-4 border border-gray-700">
+                    <h2 class="text-lg font-semibold mb-4"><i class="fas fa-plus-circle mr-2 text-green-400"></i>新建交易</h2>
+                    <form id="newTradeForm" class="space-y-3">
+                        <div>
+                            <label class="block text-sm text-gray-400 mb-1">股票代码</label>
+                            <input type="text" id="tradeTicker" placeholder="如: AAPL, TSLA" 
+                                class="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-white focus:border-blue-500 focus:outline-none uppercase">
+                        </div>
+                        
+                        <div class="grid grid-cols-2 gap-3">
+                            <div>
+                                <label class="block text-sm text-gray-400 mb-1">资产类型</label>
+                                <select id="tradeAssetType" class="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-white focus:border-blue-500 focus:outline-none">
+                                    <option value="stock">股票 Stock</option>
+                                    <option value="call">看涨期权 Call</option>
+                                    <option value="put">看跌期权 Put</option>
+                                    <option value="spread">价差 Spread</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label class="block text-sm text-gray-400 mb-1">方向</label>
+                                <select id="tradeDirection" class="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-white focus:border-blue-500 focus:outline-none">
+                                    <option value="long">做多 Long</option>
+                                    <option value="short">做空 Short</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <div>
+                            <label class="block text-sm text-gray-400 mb-1">交易策略</label>
+                            <select id="tradeStrategy" class="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-white focus:border-blue-500 focus:outline-none">
+                                <option value="momentum">动量交易 Momentum</option>
+                                <option value="value">价值投资 Value</option>
+                                <option value="swing">波段交易 Swing</option>
+                                <option value="scalp">超短线 Scalp</option>
+                                <option value="dividend">股息投资 Dividend</option>
+                                <option value="covered_call">备兑看涨 Covered Call</option>
+                                <option value="wheel">轮子策略 Wheel</option>
+                                <option value="other">其他 Other</option>
+                            </select>
+                        </div>
+
+                        <div class="grid grid-cols-2 gap-3">
+                            <div>
+                                <label class="block text-sm text-gray-400 mb-1">入场价格</label>
+                                <input type="number" id="tradeEntryPrice" step="0.01" placeholder="0.00"
+                                    class="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-white focus:border-blue-500 focus:outline-none">
+                            </div>
+                            <div>
+                                <label class="block text-sm text-gray-400 mb-1">数量</label>
+                                <input type="number" id="tradeQuantity" step="1" placeholder="100"
+                                    class="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-white focus:border-blue-500 focus:outline-none">
+                            </div>
+                        </div>
+
+                        <div class="grid grid-cols-2 gap-3">
+                            <div>
+                                <label class="block text-sm text-gray-400 mb-1">止损价</label>
+                                <input type="number" id="tradeStopLoss" step="0.01" placeholder="可选"
+                                    class="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-white focus:border-blue-500 focus:outline-none">
+                            </div>
+                            <div>
+                                <label class="block text-sm text-gray-400 mb-1">止盈价</label>
+                                <input type="number" id="tradeTakeProfit" step="0.01" placeholder="可选"
+                                    class="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-white focus:border-blue-500 focus:outline-none">
+                            </div>
+                        </div>
+
+                        <div>
+                            <label class="block text-sm text-gray-400 mb-1">市场状况</label>
+                            <input type="text" id="tradeMarketConditions" placeholder="如: 牛市, 震荡, 财报季..."
+                                class="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-white focus:border-blue-500 focus:outline-none">
+                        </div>
+
+                        <div>
+                            <label class="block text-sm text-gray-400 mb-1">新闻事件</label>
+                            <textarea id="tradeNewsEvents" rows="2" placeholder="影响决策的新闻或事件..."
+                                class="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-white focus:border-blue-500 focus:outline-none resize-none"></textarea>
+                        </div>
+
+                        <div>
+                            <label class="block text-sm text-gray-400 mb-1">备注</label>
+                            <textarea id="tradeNotes" rows="2" placeholder="交易理由、分析..."
+                                class="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-white focus:border-blue-500 focus:outline-none resize-none"></textarea>
+                        </div>
+
+                        <button type="submit" class="w-full bg-green-600 hover:bg-green-700 py-2 rounded font-semibold transition">
+                            <i class="fas fa-check mr-2"></i>开仓
+                        </button>
+                    </form>
+                </div>
+            </div>
+
+            <!-- Right Column: Trades & Performance -->
+            <div class="lg:col-span-2 space-y-6">
+                <!-- Tabs -->
+                <div class="bg-gray-800 rounded-lg border border-gray-700">
+                    <div class="flex border-b border-gray-700">
+                        <button onclick="switchTab('open')" id="tabOpen" class="flex-1 px-4 py-3 text-center font-medium border-b-2 border-blue-500 text-blue-400">
+                            <i class="fas fa-clock mr-2"></i>持仓中
+                        </button>
+                        <button onclick="switchTab('closed')" id="tabClosed" class="flex-1 px-4 py-3 text-center font-medium border-b-2 border-transparent text-gray-400 hover:text-white">
+                            <i class="fas fa-history mr-2"></i>历史记录
+                        </button>
+                        <button onclick="switchTab('profitable')" id="tabProfitable" class="flex-1 px-4 py-3 text-center font-medium border-b-2 border-transparent text-gray-400 hover:text-white">
+                            <i class="fas fa-trophy mr-2 text-yellow-400"></i>盈利交易
+                        </button>
+                        <button onclick="switchTab('stats')" id="tabStats" class="flex-1 px-4 py-3 text-center font-medium border-b-2 border-transparent text-gray-400 hover:text-white">
+                            <i class="fas fa-chart-pie mr-2"></i>统计
+                        </button>
+                    </div>
+
+                    <!-- Tab Content -->
+                    <div id="tabContent" class="p-4">
+                        <!-- Content will be loaded dynamically -->
+                        <div class="text-gray-500 text-center py-8">选择一个投资组合开始交易</div>
+                    </div>
+                </div>
+
+                <!-- Performance Chart -->
+                <div class="bg-gray-800 rounded-lg p-4 border border-gray-700">
+                    <h2 class="text-lg font-semibold mb-4"><i class="fas fa-chart-area mr-2 text-purple-400"></i>收益曲线</h2>
+                    <canvas id="performanceChart" height="200"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- New Portfolio Modal -->
+    <div id="portfolioModal" class="modal fixed inset-0 bg-black bg-opacity-50 z-50 items-center justify-center">
+        <div class="bg-gray-800 rounded-lg p-6 w-full max-w-md mx-4 border border-gray-700">
+            <h3 class="text-xl font-bold mb-4"><i class="fas fa-wallet mr-2 text-blue-400"></i>创建投资组合</h3>
+            <form id="newPortfolioForm" class="space-y-4">
+                <div>
+                    <label class="block text-sm text-gray-400 mb-1">名称</label>
+                    <input type="text" id="portfolioName" placeholder="我的投资组合"
+                        class="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-white focus:border-blue-500 focus:outline-none">
+                </div>
+                <div>
+                    <label class="block text-sm text-gray-400 mb-1">初始资金</label>
+                    <input type="number" id="portfolioBalance" value="100000" step="1000"
+                        class="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-white focus:border-blue-500 focus:outline-none">
+                </div>
+                <div>
+                    <label class="block text-sm text-gray-400 mb-1">描述</label>
+                    <textarea id="portfolioDescription" rows="2" placeholder="投资策略描述..."
+                        class="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-white focus:border-blue-500 focus:outline-none resize-none"></textarea>
+                </div>
+                <div class="flex space-x-3">
+                    <button type="button" onclick="hidePortfolioModal()" class="flex-1 bg-gray-600 hover:bg-gray-500 py-2 rounded">取消</button>
+                    <button type="submit" class="flex-1 bg-blue-600 hover:bg-blue-700 py-2 rounded">创建</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Close Trade Modal -->
+    <div id="closeTradeModal" class="modal fixed inset-0 bg-black bg-opacity-50 z-50 items-center justify-center">
+        <div class="bg-gray-800 rounded-lg p-6 w-full max-w-md mx-4 border border-gray-700">
+            <h3 class="text-xl font-bold mb-4"><i class="fas fa-door-open mr-2 text-red-400"></i>平仓</h3>
+            <div id="closeTradeInfo" class="mb-4 p-3 bg-gray-700 rounded">
+                <!-- Trade info will be shown here -->
+            </div>
+            <form id="closeTradeForm" class="space-y-4">
+                <input type="hidden" id="closeTradeId">
+                <div>
+                    <label class="block text-sm text-gray-400 mb-1">平仓价格</label>
+                    <input type="number" id="exitPrice" step="0.01" placeholder="0.00"
+                        class="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-white focus:border-blue-500 focus:outline-none">
+                </div>
+                <div>
+                    <label class="block text-sm text-gray-400 mb-1">备注</label>
+                    <textarea id="exitNotes" rows="2" placeholder="平仓原因..."
+                        class="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-white focus:border-blue-500 focus:outline-none resize-none"></textarea>
+                </div>
+                <div id="pnlPreview" class="text-center py-2 rounded bg-gray-700">
+                    预计盈亏: --
+                </div>
+                <div class="flex space-x-3">
+                    <button type="button" onclick="hideCloseTradeModal()" class="flex-1 bg-gray-600 hover:bg-gray-500 py-2 rounded">取消</button>
+                    <button type="submit" class="flex-1 bg-red-600 hover:bg-red-700 py-2 rounded">确认平仓</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <script>
+        let currentPortfolioId = null;
+        let currentPortfolio = null;
+        let currentTab = 'open';
+        let performanceChart = null;
+        let closingTrade = null;
+
+        // Initialize
+        document.addEventListener('DOMContentLoaded', async () => {
+            await loadUserInfo();
+            await loadPortfolios();
+            initChart();
+        });
+
+        async function loadUserInfo() {
+            try {
+                const response = await fetch('/api/user');
+                if (response.ok) {
+                    const data = await response.json();
+                    document.getElementById('userInfo').innerHTML = `
+                        <img src="${data.avatar_url || ''}" class="w-6 h-6 rounded-full inline mr-2" onerror="this.style.display='none'">
+                        ${data.username || data.name || '用户'}
+                    `;
+                }
+            } catch (error) {
+                console.error('Error loading user info:', error);
+            }
+        }
+
+        async function loadPortfolios() {
+            try {
+                const response = await fetch('/api/portfolios');
+                if (!response.ok) throw new Error('Failed to load portfolios');
+                
+                const data = await response.json();
+                const container = document.getElementById('portfolioList');
+                
+                if (data.portfolios.length === 0) {
+                    container.innerHTML = `
+                        <div class="text-gray-500 text-center py-4">
+                            <p>还没有投资组合</p>
+                            <button onclick="showNewPortfolioModal()" class="mt-2 text-blue-400 hover:underline">创建第一个</button>
+                        </div>
+                    `;
+                    return;
+                }
+                
+                container.innerHTML = data.portfolios.map(p => `
+                    <div onclick="selectPortfolio(${p.id})" 
+                         class="portfolio-item cursor-pointer p-3 rounded border transition ${currentPortfolioId === p.id ? 'border-blue-500 bg-blue-900/20' : 'border-gray-700 hover:border-gray-600'}">
+                        <div class="flex justify-between items-center">
+                            <span class="font-medium">${p.name}</span>
+                            <span class="${p.realized_pnl >= 0 ? 'text-green-400' : 'text-red-400'}">
+                                ${p.realized_pnl >= 0 ? '+' : ''}$${p.realized_pnl.toFixed(2)}
+                            </span>
+                        </div>
+                        <div class="text-sm text-gray-400 mt-1">
+                            余额: $${p.current_balance.toLocaleString()}
+                        </div>
+                    </div>
+                `).join('');
+                
+                // Auto-select first portfolio if none selected
+                if (!currentPortfolioId && data.portfolios.length > 0) {
+                    selectPortfolio(data.portfolios[0].id);
+                }
+            } catch (error) {
+                console.error('Error loading portfolios:', error);
+                document.getElementById('portfolioList').innerHTML = `
+                    <div class="text-red-400 text-center py-4">加载失败</div>
+                `;
+            }
+        }
+
+        async function selectPortfolio(id) {
+            currentPortfolioId = id;
+            await loadPortfolioStats();
+            await loadTrades();
+            loadPortfolios(); // Refresh to update selection
+        }
+
+        async function loadPortfolioStats() {
+            if (!currentPortfolioId) return;
+            
+            try {
+                const response = await fetch(`/api/portfolios/${currentPortfolioId}`);
+                if (!response.ok) throw new Error('Failed to load portfolio');
+                
+                const data = await response.json();
+                currentPortfolio = data.portfolio;
+                
+                // Update summary cards
+                document.getElementById('currentBalance').textContent = `$${data.portfolio.current_balance.toLocaleString()}`;
+                
+                const pnlChange = data.portfolio.current_balance - data.portfolio.initial_balance;
+                const pnlPct = (pnlChange / data.portfolio.initial_balance * 100).toFixed(2);
+                document.getElementById('balanceChange').innerHTML = `
+                    <span class="${pnlChange >= 0 ? 'text-green-400' : 'text-red-400'}">
+                        ${pnlChange >= 0 ? '+' : ''}$${pnlChange.toFixed(2)} (${pnlPct}%)
+                    </span>
+                `;
+                
+                const totalPnl = data.total_pnl || 0;
+                document.getElementById('totalPnl').textContent = `${totalPnl >= 0 ? '+' : ''}$${totalPnl.toFixed(2)}`;
+                document.getElementById('totalPnl').className = `text-2xl font-bold ${totalPnl >= 0 ? 'text-green-400' : 'text-red-400'}`;
+                document.getElementById('totalPnlPct').textContent = `${data.pnl_percentage?.toFixed(2) || 0}%`;
+                
+                document.getElementById('winRate').textContent = `${data.win_rate?.toFixed(1) || 0}%`;
+                document.getElementById('winLossCount').textContent = `${data.winning_trades || 0} 胜 / ${data.losing_trades || 0} 负`;
+                
+                document.getElementById('openPositions').textContent = data.open_positions || 0;
+                document.getElementById('totalTrades').textContent = `总交易: ${data.total_trades || 0}`;
+                
+                // Update chart with strategy stats
+                updateChart(data.strategy_stats || {});
+            } catch (error) {
+                console.error('Error loading portfolio stats:', error);
+            }
+        }
+
+        async function loadTrades() {
+            if (!currentPortfolioId) return;
+            
+            const container = document.getElementById('tabContent');
+            container.innerHTML = '<div class="text-gray-500 text-center py-8">加载中...</div>';
+            
+            try {
+                let url = '/api/trades';
+                let queryParams = [`portfolio_id=${currentPortfolioId}`];
+                
+                if (currentTab === 'open') {
+                    queryParams.push('status=open');
+                } else if (currentTab === 'closed') {
+                    queryParams.push('status=closed');
+                } else if (currentTab === 'profitable') {
+                    url = '/api/trades/profitable';
+                } else if (currentTab === 'stats') {
+                    showStats();
+                    return;
+                }
+                
+                const response = await fetch(`${url}?${queryParams.join('&')}`);
+                if (!response.ok) throw new Error('Failed to load trades');
+                
+                const data = await response.json();
+                
+                if (data.trades.length === 0) {
+                    container.innerHTML = `
+                        <div class="text-gray-500 text-center py-8">
+                            <i class="fas fa-inbox text-4xl mb-4"></i>
+                            <p>${currentTab === 'open' ? '暂无持仓' : currentTab === 'profitable' ? '暂无盈利交易' : '暂无历史记录'}</p>
+                        </div>
+                    `;
+                    return;
+                }
+                
+                container.innerHTML = data.trades.map(t => renderTradeCard(t)).join('');
+            } catch (error) {
+                console.error('Error loading trades:', error);
+                container.innerHTML = `<div class="text-red-400 text-center py-8">加载失败</div>`;
+            }
+        }
+
+        function renderTradeCard(trade) {
+            const isOpen = trade.status === 'open';
+            const isProfitable = trade.is_profitable;
+            const cardClass = isOpen ? 'trade-open' : (isProfitable ? 'trade-profitable' : 'trade-losing');
+            
+            const pnlHtml = trade.pnl != null ? `
+                <span class="${trade.pnl >= 0 ? 'text-green-400' : 'text-red-400'} font-bold">
+                    ${trade.pnl >= 0 ? '+' : ''}$${trade.pnl.toFixed(2)}
+                    <span class="text-sm">(${trade.pnl_percentage?.toFixed(1) || 0}%)</span>
+                </span>
+            ` : '';
+            
+            const assetIcon = {
+                'stock': '📈',
+                'call': '📞',
+                'put': '📉',
+                'spread': '↔️'
+            }[trade.asset_type] || '📊';
+            
+            return `
+                <div class="mb-3 p-4 rounded-lg ${cardClass}">
+                    <div class="flex justify-between items-start mb-2">
+                        <div>
+                            <span class="text-xl font-bold">${assetIcon} ${trade.ticker}</span>
+                            <span class="ml-2 text-sm text-gray-400">${trade.trade_direction === 'long' ? '做多' : '做空'}</span>
+                            <span class="ml-2 strategy-tag strategy-${trade.strategy}">${trade.strategy}</span>
+                        </div>
+                        <div class="text-right">
+                            ${pnlHtml}
+                            ${isOpen ? `
+                                <button onclick="showCloseTradeModal(${JSON.stringify(trade).replace(/"/g, '&quot;')})" 
+                                    class="ml-2 px-3 py-1 bg-red-600 hover:bg-red-700 rounded text-sm">
+                                    平仓
+                                </button>
+                            ` : ''}
+                        </div>
+                    </div>
+                    <div class="grid grid-cols-2 md:grid-cols-4 gap-2 text-sm">
+                        <div>
+                            <span class="text-gray-400">入场价:</span>
+                            <span class="ml-1">$${trade.entry_price.toFixed(2)}</span>
+                        </div>
+                        ${trade.exit_price ? `
+                            <div>
+                                <span class="text-gray-400">出场价:</span>
+                                <span class="ml-1">$${trade.exit_price.toFixed(2)}</span>
+                            </div>
+                        ` : ''}
+                        <div>
+                            <span class="text-gray-400">数量:</span>
+                            <span class="ml-1">${trade.quantity}</span>
+                        </div>
+                        <div>
+                            <span class="text-gray-400">日期:</span>
+                            <span class="ml-1">${trade.entry_date}</span>
+                        </div>
+                    </div>
+                    ${trade.stop_loss || trade.take_profit ? `
+                        <div class="mt-2 text-sm">
+                            ${trade.stop_loss ? `<span class="text-red-400 mr-3">止损: $${trade.stop_loss}</span>` : ''}
+                            ${trade.take_profit ? `<span class="text-green-400">止盈: $${trade.take_profit}</span>` : ''}
+                        </div>
+                    ` : ''}
+                    ${trade.market_conditions ? `
+                        <div class="mt-2 text-sm text-gray-400">
+                            <i class="fas fa-chart-line mr-1"></i>${trade.market_conditions}
+                        </div>
+                    ` : ''}
+                    ${trade.news_events ? `
+                        <div class="mt-1 text-sm text-gray-400">
+                            <i class="fas fa-newspaper mr-1"></i>${trade.news_events}
+                        </div>
+                    ` : ''}
+                    ${trade.notes ? `
+                        <div class="mt-2 text-sm text-gray-300 bg-gray-700/50 p-2 rounded">
+                            ${trade.notes.replace(/\n/g, '<br>')}
+                        </div>
+                    ` : ''}
+                </div>
+            `;
+        }
+
+        function showStats() {
+            if (!currentPortfolio) {
+                document.getElementById('tabContent').innerHTML = `
+                    <div class="text-gray-500 text-center py-8">请先选择投资组合</div>
+                `;
+                return;
+            }
+            
+            fetch(`/api/portfolios/${currentPortfolioId}`)
+                .then(r => r.json())
+                .then(data => {
+                    const stats = data.strategy_stats || {};
+                    let strategyHtml = '';
+                    
+                    for (const [strategy, s] of Object.entries(stats)) {
+                        strategyHtml += `
+                            <div class="p-3 bg-gray-700 rounded">
+                                <div class="flex justify-between items-center mb-2">
+                                    <span class="strategy-tag strategy-${strategy}">${strategy}</span>
+                                    <span class="${s.pnl >= 0 ? 'text-green-400' : 'text-red-400'} font-bold">
+                                        ${s.pnl >= 0 ? '+' : ''}$${s.pnl.toFixed(2)}
+                                    </span>
+                                </div>
+                                <div class="text-sm text-gray-400">
+                                    交易: ${s.trades} | 胜率: ${s.win_rate.toFixed(1)}%
+                                </div>
+                            </div>
+                        `;
+                    }
+                    
+                    document.getElementById('tabContent').innerHTML = `
+                        <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+                            <div class="p-4 bg-gray-700 rounded text-center">
+                                <div class="text-2xl font-bold text-blue-400">${data.total_trades || 0}</div>
+                                <div class="text-sm text-gray-400">总交易数</div>
+                            </div>
+                            <div class="p-4 bg-gray-700 rounded text-center">
+                                <div class="text-2xl font-bold ${data.win_rate >= 50 ? 'text-green-400' : 'text-red-400'}">${(data.win_rate || 0).toFixed(1)}%</div>
+                                <div class="text-sm text-gray-400">胜率</div>
+                            </div>
+                            <div class="p-4 bg-gray-700 rounded text-center">
+                                <div class="text-2xl font-bold text-green-400">$${(data.best_trade || 0).toFixed(2)}</div>
+                                <div class="text-sm text-gray-400">最佳交易</div>
+                            </div>
+                            <div class="p-4 bg-gray-700 rounded text-center">
+                                <div class="text-2xl font-bold text-red-400">$${(data.worst_trade || 0).toFixed(2)}</div>
+                                <div class="text-sm text-gray-400">最差交易</div>
+                            </div>
+                        </div>
+                        <h3 class="text-lg font-semibold mb-3">策略表现</h3>
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+                            ${strategyHtml || '<div class="text-gray-500 col-span-2 text-center py-4">暂无策略数据</div>'}
+                        </div>
+                    `;
+                });
+        }
+
+        function switchTab(tab) {
+            currentTab = tab;
+            
+            // Update tab styles
+            ['open', 'closed', 'profitable', 'stats'].forEach(t => {
+                const tabEl = document.getElementById('tab' + t.charAt(0).toUpperCase() + t.slice(1));
+                if (t === tab) {
+                    tabEl.classList.add('border-blue-500', 'text-blue-400');
+                    tabEl.classList.remove('border-transparent', 'text-gray-400');
+                } else {
+                    tabEl.classList.remove('border-blue-500', 'text-blue-400');
+                    tabEl.classList.add('border-transparent', 'text-gray-400');
+                }
+            });
+            
+            loadTrades();
+        }
+
+        // Portfolio Modal
+        function showNewPortfolioModal() {
+            document.getElementById('portfolioModal').classList.add('active');
+        }
+
+        function hidePortfolioModal() {
+            document.getElementById('portfolioModal').classList.remove('active');
+        }
+
+        document.getElementById('newPortfolioForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            const data = {
+                name: document.getElementById('portfolioName').value,
+                initial_balance: parseFloat(document.getElementById('portfolioBalance').value) || 100000,
+                description: document.getElementById('portfolioDescription').value || null
+            };
+            
+            try {
+                const response = await fetch('/api/portfolios', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(data)
+                });
+                
+                if (!response.ok) throw new Error('Failed to create portfolio');
+                
+                const result = await response.json();
+                hidePortfolioModal();
+                document.getElementById('newPortfolioForm').reset();
+                
+                await loadPortfolios();
+                selectPortfolio(result.portfolio.id);
+            } catch (error) {
+                alert('创建失败: ' + error.message);
+            }
+        });
+
+        // New Trade Form
+        document.getElementById('newTradeForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            if (!currentPortfolioId) {
+                alert('请先选择或创建一个投资组合');
+                return;
+            }
+            
+            const data = {
+                portfolio_id: currentPortfolioId,
+                ticker: document.getElementById('tradeTicker').value.toUpperCase(),
+                asset_type: document.getElementById('tradeAssetType').value,
+                trade_direction: document.getElementById('tradeDirection').value,
+                strategy: document.getElementById('tradeStrategy').value,
+                entry_price: parseFloat(document.getElementById('tradeEntryPrice').value),
+                quantity: parseFloat(document.getElementById('tradeQuantity').value),
+                stop_loss: parseFloat(document.getElementById('tradeStopLoss').value) || null,
+                take_profit: parseFloat(document.getElementById('tradeTakeProfit').value) || null,
+                market_conditions: document.getElementById('tradeMarketConditions').value || null,
+                news_events: document.getElementById('tradeNewsEvents').value || null,
+                notes: document.getElementById('tradeNotes').value || null
+            };
+            
+            if (!data.ticker || !data.entry_price || !data.quantity) {
+                alert('请填写股票代码、入场价格和数量');
+                return;
+            }
+            
+            try {
+                const response = await fetch('/api/trades', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(data)
+                });
+                
+                if (!response.ok) {
+                    const error = await response.json();
+                    throw new Error(error.detail || 'Failed to create trade');
+                }
+                
+                document.getElementById('newTradeForm').reset();
+                await loadPortfolioStats();
+                await loadTrades();
+            } catch (error) {
+                alert('开仓失败: ' + error.message);
+            }
+        });
+
+        // Close Trade Modal
+        function showCloseTradeModal(trade) {
+            closingTrade = trade;
+            document.getElementById('closeTradeId').value = trade.id;
+            document.getElementById('closeTradeInfo').innerHTML = `
+                <div class="flex justify-between">
+                    <span class="font-bold">${trade.ticker}</span>
+                    <span>${trade.trade_direction === 'long' ? '做多' : '做空'} x ${trade.quantity}</span>
+                </div>
+                <div class="text-sm text-gray-400 mt-1">入场价: $${trade.entry_price.toFixed(2)}</div>
+            `;
+            document.getElementById('exitPrice').value = '';
+            document.getElementById('exitNotes').value = '';
+            document.getElementById('pnlPreview').textContent = '预计盈亏: --';
+            document.getElementById('closeTradeModal').classList.add('active');
+        }
+
+        function hideCloseTradeModal() {
+            document.getElementById('closeTradeModal').classList.remove('active');
+            closingTrade = null;
+        }
+
+        document.getElementById('exitPrice').addEventListener('input', function() {
+            if (!closingTrade) return;
+            const exitPrice = parseFloat(this.value);
+            if (!exitPrice) {
+                document.getElementById('pnlPreview').textContent = '预计盈亏: --';
+                return;
+            }
+            
+            let pnl;
+            if (closingTrade.trade_direction === 'long') {
+                pnl = (exitPrice - closingTrade.entry_price) * closingTrade.quantity;
+            } else {
+                pnl = (closingTrade.entry_price - exitPrice) * closingTrade.quantity;
+            }
+            
+            const pnlPct = (pnl / (closingTrade.entry_price * closingTrade.quantity) * 100).toFixed(2);
+            document.getElementById('pnlPreview').innerHTML = `
+                预计盈亏: <span class="${pnl >= 0 ? 'text-green-400' : 'text-red-400'} font-bold">
+                    ${pnl >= 0 ? '+' : ''}$${pnl.toFixed(2)} (${pnlPct}%)
+                </span>
+            `;
+        });
+
+        document.getElementById('closeTradeForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            const tradeId = document.getElementById('closeTradeId').value;
+            const exitPrice = parseFloat(document.getElementById('exitPrice').value);
+            const notes = document.getElementById('exitNotes').value;
+            
+            if (!exitPrice) {
+                alert('请输入平仓价格');
+                return;
+            }
+            
+            try {
+                const response = await fetch(`/api/trades/${tradeId}/close`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ exit_price: exitPrice, notes: notes || null })
+                });
+                
+                if (!response.ok) throw new Error('Failed to close trade');
+                
+                hideCloseTradeModal();
+                await loadPortfolioStats();
+                await loadTrades();
+            } catch (error) {
+                alert('平仓失败: ' + error.message);
+            }
+        });
+
+        // Chart
+        function initChart() {
+            const ctx = document.getElementById('performanceChart').getContext('2d');
+            performanceChart = new Chart(ctx, {
+                type: 'doughnut',
+                data: {
+                    labels: [],
+                    datasets: [{
+                        data: [],
+                        backgroundColor: [
+                            '#fbbf24', '#60a5fa', '#a78bfa', '#f472b6', 
+                            '#34d399', '#fb923c', '#2dd4bf', '#9ca3af'
+                        ]
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    plugins: {
+                        legend: {
+                            position: 'right',
+                            labels: { color: '#9ca3af' }
+                        },
+                        title: {
+                            display: true,
+                            text: '策略分布',
+                            color: '#fff'
+                        }
+                    }
+                }
+            });
+        }
+
+        function updateChart(strategyStats) {
+            const labels = Object.keys(strategyStats);
+            const data = labels.map(s => strategyStats[s].trades);
+            
+            performanceChart.data.labels = labels;
+            performanceChart.data.datasets[0].data = data;
+            performanceChart.update();
+        }
+
+        // Close modals on outside click
+        document.querySelectorAll('.modal').forEach(modal => {
+            modal.addEventListener('click', (e) => {
+                if (e.target === modal) {
+                    modal.classList.remove('active');
+                }
+            });
+        });
+    </script>
+</body>
+</html>

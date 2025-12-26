@@ -34,12 +34,28 @@ from tradingagents.default_config import DEFAULT_CONFIG
 try:
     from .database import (get_db, init_db, get_user_by_id, can_user_analyze, save_analysis,
                            create_journal, get_user_journals, get_user_journal_by_id, 
-                           update_journal, delete_journal, get_user_journal_count)
+                           update_journal, delete_journal, get_user_journal_count,
+                           get_or_create_password_user,
+                           create_portfolio, get_user_portfolios, get_user_portfolio_by_id,
+                           update_portfolio, delete_portfolio, recalculate_portfolio_balance,
+                           create_paper_trade, get_user_trades, get_user_trade_by_id,
+                           close_trade, update_trade, cancel_trade,
+                           get_profitable_trades, get_trades_by_strategy,
+                           get_trades_by_ticker, create_performance_snapshot,
+                           get_performance_history, get_portfolio_stats)
     from . import auth as github_auth
 except ImportError:
     from database import (get_db, init_db, get_user_by_id, can_user_analyze, save_analysis,
                           create_journal, get_user_journals, get_user_journal_by_id,
-                          update_journal, delete_journal, get_user_journal_count)
+                          update_journal, delete_journal, get_user_journal_count,
+                          get_or_create_password_user,
+                          create_portfolio, get_user_portfolios, get_user_portfolio_by_id,
+                          update_portfolio, delete_portfolio, recalculate_portfolio_balance,
+                          create_paper_trade, get_user_trades, get_user_trade_by_id,
+                          close_trade, update_trade, cancel_trade,
+                          get_profitable_trades, get_trades_by_strategy,
+                          get_trades_by_ticker, create_performance_snapshot,
+                          get_performance_history, get_portfolio_stats)
     import auth as github_auth
 
 # Daily analysis limit for GitHub OAuth users
@@ -652,24 +668,26 @@ def get_login_html(error_msg: str = None, github_enabled: bool = False):
         error_html = "请登录以继续 / Please login to continue"
     
     github_button = ""
+    divider = ""
     if github_enabled:
         github_button = """
+            <a href="/auth/github"
+                class="w-full flex items-center justify-center gap-3 bg-gray-900 hover:bg-gray-700 text-white font-semibold py-4 px-6 rounded-lg transition-all duration-200 border-2 border-gray-600 hover:border-gray-500 mb-4">
+                <svg class="w-6 h-6" fill="currentColor" viewBox="0 0 20 20">
+                    <path fill-rule="evenodd" d="M10 0C4.477 0 0 4.484 0 10.017c0 4.425 2.865 8.18 6.839 9.504.5.092.682-.217.682-.483 0-.237-.008-.868-.013-1.703-2.782.605-3.369-1.343-3.369-1.343-.454-1.158-1.11-1.466-1.11-1.466-.908-.62.069-.608.069-.608 1.003.07 1.531 1.032 1.531 1.032.892 1.53 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.113-4.555-4.951 0-1.093.39-1.988 1.029-2.688-.103-.253-.446-1.272.098-2.65 0 0 .84-.27 2.75 1.026A9.564 9.564 0 0110 4.844c.85.004 1.705.115 2.504.337 1.909-1.296 2.747-1.027 2.747-1.027.546 1.379.203 2.398.1 2.651.64.7 1.028 1.595 1.028 2.688 0 3.848-2.339 4.695-4.566 4.942.359.31.678.921.678 1.856 0 1.338-.012 2.419-.012 2.747 0 .268.18.58.688.482A10.019 10.019 0 0020 10.017C20 4.484 15.522 0 10 0z" clip-rule="evenodd"/>
+                </svg>
+                <span>使用 GitHub 登录 / Login with GitHub</span>
+            </a>
+        """
+        divider = """
             <div class="relative my-6">
                 <div class="absolute inset-0 flex items-center">
                     <div class="w-full border-t border-gray-600"></div>
                 </div>
                 <div class="relative flex justify-center text-sm">
-                    <span class="px-4 bg-gray-800 text-gray-400">或者 / Or</span>
+                    <span class="px-4 bg-gray-800 text-gray-400">或使用密码 / Or use password</span>
                 </div>
             </div>
-            
-            <a href="/auth/github"
-                class="w-full flex items-center justify-center gap-3 bg-gray-700 hover:bg-gray-600 text-white font-semibold py-3 px-6 rounded-lg transition-all duration-200 border border-gray-600">
-                <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
-                    <path fill-rule="evenodd" d="M10 0C4.477 0 0 4.484 0 10.017c0 4.425 2.865 8.18 6.839 9.504.5.092.682-.217.682-.483 0-.237-.008-.868-.013-1.703-2.782.605-3.369-1.343-3.369-1.343-.454-1.158-1.11-1.466-1.11-1.466-.908-.62.069-.608.069-.608 1.003.07 1.531 1.032 1.531 1.032.892 1.53 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.113-4.555-4.951 0-1.093.39-1.988 1.029-2.688-.103-.253-.446-1.272.098-2.65 0 0 .84-.27 2.75 1.026A9.564 9.564 0 0110 4.844c.85.004 1.705.115 2.504.337 1.909-1.296 2.747-1.027 2.747-1.027.546 1.379.203 2.398.1 2.651.64.7 1.028 1.595 1.028 2.688 0 3.848-2.339 4.695-4.566 4.942.359.31.678.921.678 1.856 0 1.338-.012 2.419-.012 2.747 0 .268.18.58.688.482A10.019 10.019 0 0020 10.017C20 4.484 15.522 0 10 0z" clip-rule="evenodd"/>
-                </svg>
-                使用 GitHub 登录 / Login with GitHub
-            </a>
         """
     
     return f"""
@@ -696,7 +714,9 @@ def get_login_html(error_msg: str = None, github_enabled: bool = False):
             
             {github_button}
             
-            <form action="/login" method="POST" class="space-y-6 {'mt-6' if github_enabled else ''}">
+            {divider}
+            
+            <form action="/login" method="POST" class="space-y-6">
                 <div>
                     <label class="block text-sm font-medium text-gray-300 mb-2">用户名 / Username</label>
                     <input type="text" name="username" required
@@ -744,15 +764,18 @@ async def login_page(request: Request):
 async def login(request: Request, username: str = Form(...), password: str = Form(...)):
     """Process login form (password authentication)"""
     if username == AUTH_USERNAME and verify_password(password):
-        # Create session with user info
-        user_data = {
-            "id": 0,
-            "username": username,
-            "name": username,
-            "avatar_url": None,
-            "is_admin": True,
-            "login_type": "password"
-        }
+        # Create or get user in database for password login
+        with get_db() as db:
+            user = get_or_create_password_user(db, username)
+            user_data = {
+                "id": user.id,  # Real database ID for journal/trading features
+                "username": user.username,
+                "name": user.name or username,
+                "avatar_url": user.avatar_url,
+                "is_admin": True,
+                "login_type": "password"
+            }
+        
         token = create_session(user_data)
         response = RedirectResponse(url="/", status_code=302)
         # Check if running in production (Railway sets PORT env var)
@@ -1747,7 +1770,7 @@ async def get_journals(request: Request, limit: int = 50, offset: int = 0):
     current_user = get_current_user(request)
     if not current_user or current_user.get("id", 0) <= 0:
         # Password login users don't have database ID
-        return {"journals": [], "total": 0, "message": "Journal feature requires GitHub login"}
+        return {"journals": [], "total": 0, "message": "请先登录 / Please login first"}
     
     user_id = current_user["id"]
     
@@ -1772,7 +1795,7 @@ async def create_journal_entry(request: Request, journal_data: JournalCreate):
     
     current_user = get_current_user(request)
     if not current_user or current_user.get("id", 0) <= 0:
-        raise HTTPException(status_code=403, detail="Journal feature requires GitHub login")
+        raise HTTPException(status_code=403, detail="请先登录 / Please login first")
     
     user_id = current_user["id"]
     
@@ -1805,7 +1828,7 @@ async def get_journal_detail(request: Request, journal_id: int):
     
     current_user = get_current_user(request)
     if not current_user or current_user.get("id", 0) <= 0:
-        raise HTTPException(status_code=403, detail="Journal feature requires GitHub login")
+        raise HTTPException(status_code=403, detail="请先登录 / Please login first")
     
     user_id = current_user["id"]
     
@@ -1826,7 +1849,7 @@ async def update_journal_entry(request: Request, journal_id: int, journal_data: 
     
     current_user = get_current_user(request)
     if not current_user or current_user.get("id", 0) <= 0:
-        raise HTTPException(status_code=403, detail="Journal feature requires GitHub login")
+        raise HTTPException(status_code=403, detail="请先登录 / Please login first")
     
     user_id = current_user["id"]
     
@@ -1869,7 +1892,7 @@ async def delete_journal_entry(request: Request, journal_id: int):
     
     current_user = get_current_user(request)
     if not current_user or current_user.get("id", 0) <= 0:
-        raise HTTPException(status_code=403, detail="Journal feature requires GitHub login")
+        raise HTTPException(status_code=403, detail="请先登录 / Please login first")
     
     user_id = current_user["id"]
     
@@ -1913,6 +1936,510 @@ def get_journal_html():
 <body class="bg-gray-900 text-white min-h-screen">
     <div class="container mx-auto px-4 py-8">
         <h1 class="text-4xl font-bold text-center mb-8">📔 交易日记</h1>
+        <p class="text-center text-gray-400">请使用完整的模板页面</p>
+        <p class="text-center mt-4"><a href="/dashboard" class="text-blue-400 hover:underline">返回首页</a></p>
+    </div>
+</body>
+</html>
+"""
+
+
+# ==================== Simulated Trading (Paper Trading) API ====================
+
+class PortfolioCreate(BaseModel):
+    name: str
+    initial_balance: float = 100000.0
+    description: Optional[str] = None
+
+
+class PortfolioUpdate(BaseModel):
+    name: Optional[str] = None
+    description: Optional[str] = None
+    is_active: Optional[bool] = None
+
+
+class TradeCreate(BaseModel):
+    portfolio_id: int
+    ticker: str
+    asset_type: str  # stock, call, put, spread
+    strategy: str  # momentum, value, swing, scalp, dividend, covered_call, wheel, other
+    trade_direction: str  # long, short
+    entry_price: float
+    quantity: float
+    entry_date: Optional[str] = None
+    stop_loss: Optional[float] = None
+    take_profit: Optional[float] = None
+    notes: Optional[str] = None
+    market_conditions: Optional[str] = None
+    news_events: Optional[str] = None
+    tags: Optional[str] = None
+
+
+class TradeClose(BaseModel):
+    exit_price: float
+    exit_date: Optional[str] = None
+    notes: Optional[str] = None
+
+
+class TradeUpdate(BaseModel):
+    stop_loss: Optional[float] = None
+    take_profit: Optional[float] = None
+    notes: Optional[str] = None
+    market_conditions: Optional[str] = None
+    news_events: Optional[str] = None
+    tags: Optional[str] = None
+
+
+# Portfolio API endpoints
+
+@app.get("/api/portfolios")
+async def list_portfolios(request: Request, active_only: bool = True):
+    """List user's portfolios"""
+    token = get_session_token(request)
+    if not verify_session(token):
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    
+    current_user = get_current_user(request)
+    if not current_user or current_user.get("id", 0) <= 0:
+        raise HTTPException(status_code=403, detail="请先登录 / Please login first")
+    
+    user_id = current_user["id"]
+    
+    with get_db() as db:
+        portfolios = get_user_portfolios(db, user_id, active_only=active_only)
+        return {"portfolios": [p.to_dict() for p in portfolios]}
+
+
+@app.post("/api/portfolios")
+async def create_portfolio_endpoint(request: Request, portfolio_data: PortfolioCreate):
+    """Create a new portfolio"""
+    token = get_session_token(request)
+    if not verify_session(token):
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    
+    current_user = get_current_user(request)
+    if not current_user or current_user.get("id", 0) <= 0:
+        raise HTTPException(status_code=403, detail="请先登录 / Please login first")
+    
+    user_id = current_user["id"]
+    
+    with get_db() as db:
+        portfolio = create_portfolio(
+            db,
+            user_id=user_id,
+            name=portfolio_data.name,
+            initial_balance=portfolio_data.initial_balance,
+            description=portfolio_data.description
+        )
+        return {"message": "Portfolio created", "portfolio": portfolio.to_dict()}
+
+
+@app.get("/api/portfolios/{portfolio_id}")
+async def get_portfolio_endpoint(request: Request, portfolio_id: int):
+    """Get portfolio details with stats"""
+    token = get_session_token(request)
+    if not verify_session(token):
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    
+    current_user = get_current_user(request)
+    if not current_user or current_user.get("id", 0) <= 0:
+        raise HTTPException(status_code=403, detail="请先登录 / Please login first")
+    
+    user_id = current_user["id"]
+    
+    with get_db() as db:
+        portfolio = get_user_portfolio_by_id(db, user_id, portfolio_id)
+        if not portfolio:
+            raise HTTPException(status_code=404, detail="Portfolio not found")
+        
+        stats = get_portfolio_stats(db, portfolio_id)
+        return stats
+
+
+@app.put("/api/portfolios/{portfolio_id}")
+async def update_portfolio_endpoint(request: Request, portfolio_id: int, update_data: PortfolioUpdate):
+    """Update portfolio"""
+    token = get_session_token(request)
+    if not verify_session(token):
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    
+    current_user = get_current_user(request)
+    if not current_user or current_user.get("id", 0) <= 0:
+        raise HTTPException(status_code=403, detail="请先登录 / Please login first")
+    
+    user_id = current_user["id"]
+    
+    with get_db() as db:
+        portfolio = get_user_portfolio_by_id(db, user_id, portfolio_id)
+        if not portfolio:
+            raise HTTPException(status_code=404, detail="Portfolio not found")
+        
+        update_fields = {k: v for k, v in update_data.dict().items() if v is not None}
+        if update_fields:
+            portfolio = update_portfolio(db, portfolio, **update_fields)
+        
+        return {"message": "Portfolio updated", "portfolio": portfolio.to_dict()}
+
+
+@app.delete("/api/portfolios/{portfolio_id}")
+async def delete_portfolio_endpoint(request: Request, portfolio_id: int):
+    """Delete portfolio (soft delete)"""
+    token = get_session_token(request)
+    if not verify_session(token):
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    
+    current_user = get_current_user(request)
+    if not current_user or current_user.get("id", 0) <= 0:
+        raise HTTPException(status_code=403, detail="请先登录 / Please login first")
+    
+    user_id = current_user["id"]
+    
+    with get_db() as db:
+        portfolio = get_user_portfolio_by_id(db, user_id, portfolio_id)
+        if not portfolio:
+            raise HTTPException(status_code=404, detail="Portfolio not found")
+        
+        delete_portfolio(db, portfolio)
+        return {"message": "Portfolio deleted", "id": portfolio_id}
+
+
+# Trade API endpoints
+
+@app.get("/api/trades")
+async def list_trades(
+    request: Request,
+    portfolio_id: Optional[int] = None,
+    status: Optional[str] = None,
+    limit: int = 100,
+    offset: int = 0
+):
+    """List user's trades"""
+    token = get_session_token(request)
+    if not verify_session(token):
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    
+    current_user = get_current_user(request)
+    if not current_user or current_user.get("id", 0) <= 0:
+        raise HTTPException(status_code=403, detail="请先登录 / Please login first")
+    
+    user_id = current_user["id"]
+    
+    with get_db() as db:
+        trades = get_user_trades(db, user_id, portfolio_id=portfolio_id, status=status, limit=limit, offset=offset)
+        return {"trades": [t.to_dict() for t in trades]}
+
+
+@app.post("/api/trades")
+async def create_trade_endpoint(request: Request, trade_data: TradeCreate):
+    """Create a new paper trade"""
+    token = get_session_token(request)
+    if not verify_session(token):
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    
+    current_user = get_current_user(request)
+    if not current_user or current_user.get("id", 0) <= 0:
+        raise HTTPException(status_code=403, detail="请先登录 / Please login first")
+    
+    user_id = current_user["id"]
+    
+    # Validate asset_type
+    valid_asset_types = ['stock', 'call', 'put', 'spread']
+    if trade_data.asset_type not in valid_asset_types:
+        raise HTTPException(status_code=400, detail=f"Invalid asset_type. Must be one of: {valid_asset_types}")
+    
+    # Validate strategy
+    valid_strategies = ['momentum', 'value', 'swing', 'scalp', 'dividend', 'covered_call', 'wheel', 'other']
+    if trade_data.strategy not in valid_strategies:
+        raise HTTPException(status_code=400, detail=f"Invalid strategy. Must be one of: {valid_strategies}")
+    
+    # Validate trade_direction
+    valid_directions = ['long', 'short']
+    if trade_data.trade_direction not in valid_directions:
+        raise HTTPException(status_code=400, detail=f"Invalid trade_direction. Must be one of: {valid_directions}")
+    
+    with get_db() as db:
+        # Verify portfolio belongs to user
+        portfolio = get_user_portfolio_by_id(db, user_id, trade_data.portfolio_id)
+        if not portfolio:
+            raise HTTPException(status_code=404, detail="Portfolio not found")
+        
+        trade = create_paper_trade(
+            db,
+            user_id=user_id,
+            portfolio_id=trade_data.portfolio_id,
+            ticker=trade_data.ticker,
+            asset_type=trade_data.asset_type,
+            strategy=trade_data.strategy,
+            trade_direction=trade_data.trade_direction,
+            entry_price=trade_data.entry_price,
+            quantity=trade_data.quantity,
+            entry_date=trade_data.entry_date,
+            stop_loss=trade_data.stop_loss,
+            take_profit=trade_data.take_profit,
+            notes=trade_data.notes,
+            market_conditions=trade_data.market_conditions,
+            news_events=trade_data.news_events,
+            tags=trade_data.tags
+        )
+        return {"message": "Trade created", "trade": trade.to_dict()}
+
+
+@app.get("/api/trades/{trade_id}")
+async def get_trade_endpoint(request: Request, trade_id: int):
+    """Get trade details"""
+    token = get_session_token(request)
+    if not verify_session(token):
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    
+    current_user = get_current_user(request)
+    if not current_user or current_user.get("id", 0) <= 0:
+        raise HTTPException(status_code=403, detail="请先登录 / Please login first")
+    
+    user_id = current_user["id"]
+    
+    with get_db() as db:
+        trade = get_user_trade_by_id(db, user_id, trade_id)
+        if not trade:
+            raise HTTPException(status_code=404, detail="Trade not found")
+        
+        return {"trade": trade.to_dict()}
+
+
+@app.put("/api/trades/{trade_id}")
+async def update_trade_endpoint(request: Request, trade_id: int, update_data: TradeUpdate):
+    """Update trade (for open trades)"""
+    token = get_session_token(request)
+    if not verify_session(token):
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    
+    current_user = get_current_user(request)
+    if not current_user or current_user.get("id", 0) <= 0:
+        raise HTTPException(status_code=403, detail="请先登录 / Please login first")
+    
+    user_id = current_user["id"]
+    
+    with get_db() as db:
+        trade = get_user_trade_by_id(db, user_id, trade_id)
+        if not trade:
+            raise HTTPException(status_code=404, detail="Trade not found")
+        
+        update_fields = {k: v for k, v in update_data.dict().items() if v is not None}
+        if update_fields:
+            trade = update_trade(db, trade, **update_fields)
+        
+        return {"message": "Trade updated", "trade": trade.to_dict()}
+
+
+@app.post("/api/trades/{trade_id}/close")
+async def close_trade_endpoint(request: Request, trade_id: int, close_data: TradeClose):
+    """Close a trade"""
+    token = get_session_token(request)
+    if not verify_session(token):
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    
+    current_user = get_current_user(request)
+    if not current_user or current_user.get("id", 0) <= 0:
+        raise HTTPException(status_code=403, detail="请先登录 / Please login first")
+    
+    user_id = current_user["id"]
+    
+    with get_db() as db:
+        trade = get_user_trade_by_id(db, user_id, trade_id)
+        if not trade:
+            raise HTTPException(status_code=404, detail="Trade not found")
+        
+        if trade.status != 'open':
+            raise HTTPException(status_code=400, detail="Trade is not open")
+        
+        trade = close_trade(
+            db,
+            trade,
+            exit_price=close_data.exit_price,
+            exit_date=close_data.exit_date,
+            notes=close_data.notes
+        )
+        return {"message": "Trade closed", "trade": trade.to_dict()}
+
+
+@app.post("/api/trades/{trade_id}/cancel")
+async def cancel_trade_endpoint(request: Request, trade_id: int):
+    """Cancel a trade"""
+    token = get_session_token(request)
+    if not verify_session(token):
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    
+    current_user = get_current_user(request)
+    if not current_user or current_user.get("id", 0) <= 0:
+        raise HTTPException(status_code=403, detail="请先登录 / Please login first")
+    
+    user_id = current_user["id"]
+    
+    with get_db() as db:
+        trade = get_user_trade_by_id(db, user_id, trade_id)
+        if not trade:
+            raise HTTPException(status_code=404, detail="Trade not found")
+        
+        if trade.status != 'open':
+            raise HTTPException(status_code=400, detail="Trade is not open")
+        
+        trade = cancel_trade(db, trade)
+        return {"message": "Trade cancelled", "trade": trade.to_dict()}
+
+
+# Performance API endpoints
+
+@app.get("/api/performance")
+async def get_performance(
+    request: Request,
+    portfolio_id: Optional[int] = None,
+    period_type: Optional[str] = None,
+    limit: int = 30
+):
+    """Get performance history"""
+    token = get_session_token(request)
+    if not verify_session(token):
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    
+    current_user = get_current_user(request)
+    if not current_user or current_user.get("id", 0) <= 0:
+        raise HTTPException(status_code=403, detail="请先登录 / Please login first")
+    
+    user_id = current_user["id"]
+    
+    with get_db() as db:
+        snapshots = get_performance_history(db, user_id, portfolio_id=portfolio_id, period_type=period_type, limit=limit)
+        return {"performance": [s.to_dict() for s in snapshots]}
+
+
+@app.post("/api/performance/snapshot")
+async def create_snapshot(
+    request: Request,
+    portfolio_id: int,
+    period_type: str = "daily"
+):
+    """Create a performance snapshot"""
+    token = get_session_token(request)
+    if not verify_session(token):
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    
+    current_user = get_current_user(request)
+    if not current_user or current_user.get("id", 0) <= 0:
+        raise HTTPException(status_code=403, detail="请先登录 / Please login first")
+    
+    user_id = current_user["id"]
+    
+    valid_periods = ['daily', 'weekly', 'monthly']
+    if period_type not in valid_periods:
+        raise HTTPException(status_code=400, detail=f"Invalid period_type. Must be one of: {valid_periods}")
+    
+    with get_db() as db:
+        portfolio = get_user_portfolio_by_id(db, user_id, portfolio_id)
+        if not portfolio:
+            raise HTTPException(status_code=404, detail="Portfolio not found")
+        
+        snapshot = create_performance_snapshot(db, user_id, portfolio_id, period_type)
+        return {"message": "Snapshot created", "snapshot": snapshot.to_dict()}
+
+
+@app.get("/api/trades/profitable")
+async def get_profitable_trades_endpoint(
+    request: Request,
+    portfolio_id: Optional[int] = None,
+    limit: int = 50
+):
+    """Get profitable trades (highlighted)"""
+    token = get_session_token(request)
+    if not verify_session(token):
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    
+    current_user = get_current_user(request)
+    if not current_user or current_user.get("id", 0) <= 0:
+        raise HTTPException(status_code=403, detail="请先登录 / Please login first")
+    
+    user_id = current_user["id"]
+    
+    with get_db() as db:
+        trades = get_profitable_trades(db, user_id, portfolio_id=portfolio_id, limit=limit)
+        return {"trades": [t.to_dict() for t in trades]}
+
+
+@app.get("/api/trades/by-strategy/{strategy}")
+async def get_trades_by_strategy_endpoint(
+    request: Request,
+    strategy: str,
+    portfolio_id: Optional[int] = None,
+    limit: int = 100
+):
+    """Get trades by strategy"""
+    token = get_session_token(request)
+    if not verify_session(token):
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    
+    current_user = get_current_user(request)
+    if not current_user or current_user.get("id", 0) <= 0:
+        raise HTTPException(status_code=403, detail="请先登录 / Please login first")
+    
+    user_id = current_user["id"]
+    
+    with get_db() as db:
+        trades = get_trades_by_strategy(db, user_id, strategy, portfolio_id=portfolio_id, limit=limit)
+        return {"trades": [t.to_dict() for t in trades], "strategy": strategy}
+
+
+@app.get("/api/trades/by-ticker/{ticker}")
+async def get_trades_by_ticker_endpoint(
+    request: Request,
+    ticker: str,
+    limit: int = 50
+):
+    """Get trades by ticker"""
+    token = get_session_token(request)
+    if not verify_session(token):
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    
+    current_user = get_current_user(request)
+    if not current_user or current_user.get("id", 0) <= 0:
+        raise HTTPException(status_code=403, detail="请先登录 / Please login first")
+    
+    user_id = current_user["id"]
+    
+    with get_db() as db:
+        trades = get_trades_by_ticker(db, user_id, ticker, limit=limit)
+        return {"trades": [t.to_dict() for t in trades], "ticker": ticker.upper()}
+
+
+# Simulator page route
+
+@app.get("/simulator", response_class=HTMLResponse)
+async def simulator_page(request: Request):
+    """Serve the paper trading simulator page (protected)"""
+    token = get_session_token(request)
+    if not verify_session(token):
+        return RedirectResponse(url="/login", status_code=302)
+    
+    html_path = os.path.join(os.path.dirname(__file__), "templates", "simulator.html")
+    if os.path.exists(html_path):
+        with open(html_path, "r", encoding="utf-8") as f:
+            return HTMLResponse(content=f.read())
+    
+    # Return a basic simulator page if template not found
+    return HTMLResponse(content=get_simulator_html())
+
+
+def get_simulator_html():
+    """Return basic simulator HTML if template not found"""
+    return """
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>模拟交易 - TradingAgents</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-900 text-white min-h-screen">
+    <div class="container mx-auto px-4 py-8">
+        <h1 class="text-4xl font-bold text-center mb-8">📈 模拟交易</h1>
         <p class="text-center text-gray-400">请使用完整的模板页面</p>
         <p class="text-center mt-4"><a href="/dashboard" class="text-blue-400 hover:underline">返回首页</a></p>
     </div>
