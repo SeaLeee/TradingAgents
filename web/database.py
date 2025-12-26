@@ -60,6 +60,7 @@ class User(Base):
     # Relationships
     sessions = relationship("Session", back_populates="user", cascade="all, delete-orphan")
     analyses = relationship("AnalysisHistory", back_populates="user", cascade="all, delete-orphan")
+    journals = relationship("TradingJournal", back_populates="user", cascade="all, delete-orphan")
     
     def __repr__(self):
         return f"<User {self.username}>"
@@ -129,6 +130,60 @@ class AnalysisHistory(Base):
     
     def __repr__(self):
         return f"<AnalysisHistory {self.ticker} by User {self.user_id}>"
+
+
+class TradingJournal(Base):
+    """Trading Journal - stores user's daily trading notes and reflections"""
+    __tablename__ = "trading_journals"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    
+    # Journal content
+    title = Column(String(200), nullable=False)
+    content = Column(Text, nullable=False)  # Markdown content
+    
+    # Trading info (optional)
+    ticker = Column(String(20), nullable=True, index=True)  # Related stock
+    trade_type = Column(String(20), nullable=True)  # buy, sell, hold, watch
+    trade_price = Column(String(50), nullable=True)  # Entry/exit price
+    
+    # Tags and categories
+    tags = Column(String(500), nullable=True)  # Comma-separated tags
+    mood = Column(String(20), nullable=True)  # bullish, bearish, neutral, cautious
+    
+    # Journal date (user can backdate entries)
+    journal_date = Column(String(20), nullable=False, index=True)
+    
+    # Status
+    is_public = Column(Boolean, default=False)  # Allow sharing in future
+    
+    # Timestamps
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    
+    # Relationships
+    user = relationship("User", back_populates="journals")
+    
+    def __repr__(self):
+        return f"<TradingJournal {self.title} by User {self.user_id}>"
+    
+    def to_dict(self):
+        return {
+            "id": self.id,
+            "user_id": self.user_id,
+            "title": self.title,
+            "content": self.content,
+            "ticker": self.ticker,
+            "trade_type": self.trade_type,
+            "trade_price": self.trade_price,
+            "tags": self.tags.split(",") if self.tags else [],
+            "mood": self.mood,
+            "journal_date": self.journal_date,
+            "is_public": self.is_public,
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+            "updated_at": self.updated_at.isoformat() if self.updated_at else None,
+        }
 
 
 # ============== Database Functions ==============
@@ -321,6 +376,97 @@ def can_user_analyze(db, user_id: int, daily_limit: int = 1) -> tuple:
     can_analyze = remaining > 0
     
     return can_analyze, used, remaining
+
+
+# ============== Trading Journal Operations ==============
+
+def create_journal(db, user_id: int, title: str, content: str, journal_date: str,
+                   ticker: str = None, trade_type: str = None, trade_price: str = None,
+                   tags: str = None, mood: str = None, is_public: bool = False) -> TradingJournal:
+    """Create a new trading journal entry"""
+    journal = TradingJournal(
+        user_id=user_id,
+        title=title,
+        content=content,
+        journal_date=journal_date,
+        ticker=ticker,
+        trade_type=trade_type,
+        trade_price=trade_price,
+        tags=tags,
+        mood=mood,
+        is_public=is_public
+    )
+    db.add(journal)
+    db.commit()
+    db.refresh(journal)
+    return journal
+
+
+def get_user_journals(db, user_id: int, limit: int = 50, offset: int = 0):
+    """Get user's journal entries, ordered by journal_date desc"""
+    return db.query(TradingJournal)\
+        .filter(TradingJournal.user_id == user_id)\
+        .order_by(TradingJournal.journal_date.desc(), TradingJournal.created_at.desc())\
+        .offset(offset)\
+        .limit(limit)\
+        .all()
+
+
+def get_journal_by_id(db, journal_id: int) -> Optional[TradingJournal]:
+    """Get journal by ID"""
+    return db.query(TradingJournal).filter(TradingJournal.id == journal_id).first()
+
+
+def get_user_journal_by_id(db, user_id: int, journal_id: int) -> Optional[TradingJournal]:
+    """Get journal by ID, ensuring it belongs to the user"""
+    return db.query(TradingJournal)\
+        .filter(TradingJournal.id == journal_id)\
+        .filter(TradingJournal.user_id == user_id)\
+        .first()
+
+
+def update_journal(db, journal: TradingJournal, **kwargs) -> TradingJournal:
+    """Update journal entry"""
+    for key, value in kwargs.items():
+        if hasattr(journal, key) and key not in ['id', 'user_id', 'created_at']:
+            setattr(journal, key, value)
+    journal.updated_at = datetime.utcnow()
+    db.commit()
+    db.refresh(journal)
+    return journal
+
+
+def delete_journal(db, journal: TradingJournal):
+    """Delete journal entry"""
+    db.delete(journal)
+    db.commit()
+
+
+def get_user_journals_by_date(db, user_id: int, journal_date: str):
+    """Get user's journals for a specific date"""
+    return db.query(TradingJournal)\
+        .filter(TradingJournal.user_id == user_id)\
+        .filter(TradingJournal.journal_date == journal_date)\
+        .order_by(TradingJournal.created_at.desc())\
+        .all()
+
+
+def get_user_journals_by_ticker(db, user_id: int, ticker: str, limit: int = 20):
+    """Get user's journals for a specific ticker"""
+    return db.query(TradingJournal)\
+        .filter(TradingJournal.user_id == user_id)\
+        .filter(TradingJournal.ticker == ticker.upper())\
+        .order_by(TradingJournal.journal_date.desc())\
+        .limit(limit)\
+        .all()
+
+
+def get_user_journal_count(db, user_id: int) -> int:
+    """Get total count of user's journals"""
+    from sqlalchemy import func
+    return db.query(func.count(TradingJournal.id))\
+        .filter(TradingJournal.user_id == user_id)\
+        .scalar() or 0
 
 
 # Initialize database on module load

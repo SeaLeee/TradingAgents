@@ -1,0 +1,583 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>交易日记 - TradingAgents</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <!-- Markdown Editor -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/easymde/dist/easymde.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/easymde/dist/easymde.min.js"></script>
+    <!-- Markdown Parser -->
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <style>
+        .gradient-bg {
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+        }
+        .card {
+            background: rgba(31, 41, 55, 0.8);
+            backdrop-filter: blur(10px);
+        }
+        .journal-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+        }
+        .mood-bullish { color: #22c55e; background: rgba(34, 197, 94, 0.1); }
+        .mood-bearish { color: #ef4444; background: rgba(239, 68, 68, 0.1); }
+        .mood-neutral { color: #eab308; background: rgba(234, 179, 8, 0.1); }
+        .mood-cautious { color: #f97316; background: rgba(249, 115, 22, 0.1); }
+        .trade-buy { color: #22c55e; }
+        .trade-sell { color: #ef4444; }
+        .trade-hold { color: #eab308; }
+        .trade-watch { color: #3b82f6; }
+        
+        /* EasyMDE Dark Theme */
+        .EasyMDEContainer .CodeMirror {
+            background: #1f2937;
+            color: #e5e7eb;
+            border-color: #374151;
+        }
+        .EasyMDEContainer .editor-toolbar {
+            background: #1f2937;
+            border-color: #374151;
+        }
+        .EasyMDEContainer .editor-toolbar button {
+            color: #9ca3af !important;
+        }
+        .EasyMDEContainer .editor-toolbar button:hover {
+            background: #374151;
+        }
+        .EasyMDEContainer .editor-preview {
+            background: #1f2937;
+            color: #e5e7eb;
+        }
+        .EasyMDEContainer .CodeMirror-cursor {
+            border-left-color: #e5e7eb;
+        }
+        .editor-toolbar.fullscreen, .CodeMirror-fullscreen, .editor-preview-active-side {
+            z-index: 100;
+        }
+    </style>
+</head>
+<body class="gradient-bg min-h-screen text-white">
+    <!-- Navigation -->
+    <nav class="bg-gray-900/90 backdrop-blur-sm border-b border-gray-700 sticky top-0 z-50">
+        <div class="max-w-7xl mx-auto px-4 py-3 flex items-center justify-between">
+            <div class="flex items-center gap-4">
+                <a href="/dashboard" class="text-gray-400 hover:text-white transition-colors">
+                    <i class="fas fa-arrow-left mr-2"></i>返回
+                </a>
+                <h1 class="text-xl font-bold text-blue-400">
+                    <i class="fas fa-book-open mr-2"></i>交易日记
+                </h1>
+            </div>
+            <div class="flex items-center gap-3">
+                <div id="userInfo" class="flex items-center gap-2">
+                    <div id="userAvatar" class="w-8 h-8 rounded-full bg-gray-700 flex items-center justify-center overflow-hidden">
+                        <i class="fas fa-user text-gray-400 text-sm"></i>
+                    </div>
+                    <span id="userName" class="text-gray-300 text-sm hidden md:inline"></span>
+                </div>
+                <button onclick="openNewJournalModal()" class="bg-blue-600 hover:bg-blue-700 px-4 py-2 rounded-lg text-sm font-semibold transition-colors">
+                    <i class="fas fa-plus mr-2"></i>写日记
+                </button>
+            </div>
+        </div>
+    </nav>
+
+    <main class="max-w-6xl mx-auto px-4 py-8">
+        <!-- Stats Summary -->
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+            <div class="card rounded-xl p-4 text-center">
+                <div id="totalCount" class="text-3xl font-bold text-blue-400">0</div>
+                <div class="text-gray-400 text-sm">总日记数</div>
+            </div>
+            <div class="card rounded-xl p-4 text-center">
+                <div id="thisMonthCount" class="text-3xl font-bold text-green-400">0</div>
+                <div class="text-gray-400 text-sm">本月日记</div>
+            </div>
+            <div class="card rounded-xl p-4 text-center">
+                <div id="tickerCount" class="text-3xl font-bold text-yellow-400">0</div>
+                <div class="text-gray-400 text-sm">关注股票</div>
+            </div>
+            <div class="card rounded-xl p-4 text-center">
+                <div id="streakDays" class="text-3xl font-bold text-purple-400">0</div>
+                <div class="text-gray-400 text-sm">连续记录</div>
+            </div>
+        </div>
+
+        <!-- Journal List -->
+        <div class="space-y-4" id="journalList">
+            <!-- Journals will be loaded here -->
+        </div>
+
+        <!-- Empty State -->
+        <div id="emptyState" class="hidden text-center py-16">
+            <div class="text-6xl mb-4">📔</div>
+            <h3 class="text-xl font-semibold text-gray-300 mb-2">还没有日记</h3>
+            <p class="text-gray-500 mb-6">开始记录你的交易策略和反思吧</p>
+            <button onclick="openNewJournalModal()" class="bg-blue-600 hover:bg-blue-700 px-6 py-3 rounded-lg font-semibold transition-colors">
+                <i class="fas fa-plus mr-2"></i>写第一篇日记
+            </button>
+        </div>
+
+        <!-- GitHub Login Required -->
+        <div id="loginRequired" class="hidden text-center py-16">
+            <div class="text-6xl mb-4">🔐</div>
+            <h3 class="text-xl font-semibold text-gray-300 mb-2">需要 GitHub 登录</h3>
+            <p class="text-gray-500 mb-6">交易日记功能需要使用 GitHub 账号登录</p>
+            <a href="/login" class="bg-gray-700 hover:bg-gray-600 px-6 py-3 rounded-lg font-semibold transition-colors inline-block">
+                <i class="fab fa-github mr-2"></i>使用 GitHub 登录
+            </a>
+        </div>
+
+        <!-- Loading -->
+        <div id="loadingState" class="text-center py-16">
+            <div class="animate-spin text-4xl mb-4">⏳</div>
+            <p class="text-gray-400">加载中...</p>
+        </div>
+    </main>
+
+    <!-- New/Edit Journal Modal -->
+    <div id="journalModal" class="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
+        <div class="bg-gray-800 rounded-2xl w-full max-w-4xl max-h-[90vh] overflow-hidden flex flex-col">
+            <div class="p-4 border-b border-gray-700 flex items-center justify-between">
+                <h2 id="modalTitle" class="text-xl font-semibold">
+                    <i class="fas fa-edit mr-2"></i>写日记
+                </h2>
+                <button onclick="closeJournalModal()" class="text-gray-400 hover:text-white">
+                    <i class="fas fa-times text-xl"></i>
+                </button>
+            </div>
+            
+            <div class="p-6 overflow-y-auto flex-1">
+                <form id="journalForm" class="space-y-4">
+                    <input type="hidden" id="editJournalId" value="">
+                    
+                    <!-- Title -->
+                    <div>
+                        <label class="block text-sm font-medium text-gray-300 mb-2">标题 *</label>
+                        <input type="text" id="journalTitle" required
+                            class="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-2.5 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                            placeholder="今日交易总结">
+                    </div>
+                    
+                    <!-- Date and Ticker Row -->
+                    <div class="grid grid-cols-2 gap-4">
+                        <div>
+                            <label class="block text-sm font-medium text-gray-300 mb-2">日期 *</label>
+                            <input type="date" id="journalDate" required
+                                class="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-2.5 focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-300 mb-2">相关股票</label>
+                            <input type="text" id="journalTicker"
+                                class="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-2.5 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                                placeholder="AAPL, NVDA">
+                        </div>
+                    </div>
+                    
+                    <!-- Trade Type and Mood Row -->
+                    <div class="grid grid-cols-2 gap-4">
+                        <div>
+                            <label class="block text-sm font-medium text-gray-300 mb-2">交易类型</label>
+                            <select id="journalTradeType"
+                                class="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-2.5 focus:ring-2 focus:ring-blue-500">
+                                <option value="">-- 选择 --</option>
+                                <option value="buy">📈 买入</option>
+                                <option value="sell">📉 卖出</option>
+                                <option value="hold">⏸️ 持有</option>
+                                <option value="watch">👀 观望</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-300 mb-2">市场情绪</label>
+                            <select id="journalMood"
+                                class="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-2.5 focus:ring-2 focus:ring-blue-500">
+                                <option value="">-- 选择 --</option>
+                                <option value="bullish">🐂 看涨</option>
+                                <option value="bearish">🐻 看跌</option>
+                                <option value="neutral">😐 中性</option>
+                                <option value="cautious">⚠️ 谨慎</option>
+                            </select>
+                        </div>
+                    </div>
+                    
+                    <!-- Trade Price -->
+                    <div>
+                        <label class="block text-sm font-medium text-gray-300 mb-2">价格记录</label>
+                        <input type="text" id="journalPrice"
+                            class="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-2.5 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                            placeholder="入场价 $150.00 / 止损 $145.00 / 目标 $165.00">
+                    </div>
+                    
+                    <!-- Tags -->
+                    <div>
+                        <label class="block text-sm font-medium text-gray-300 mb-2">标签</label>
+                        <input type="text" id="journalTags"
+                            class="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-2.5 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                            placeholder="策略,复盘,教训 (用逗号分隔)">
+                    </div>
+                    
+                    <!-- Content -->
+                    <div>
+                        <label class="block text-sm font-medium text-gray-300 mb-2">内容 * (支持 Markdown)</label>
+                        <textarea id="journalContent" rows="10"
+                            class="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-2.5 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                            placeholder="## 今日策略
+
+### 市场观察
+- 
+
+### 交易记录
+- 
+
+### 反思总结
+- "></textarea>
+                    </div>
+                </form>
+            </div>
+            
+            <div class="p-4 border-t border-gray-700 flex justify-end gap-3">
+                <button onclick="closeJournalModal()" class="px-4 py-2 bg-gray-700 hover:bg-gray-600 rounded-lg transition-colors">
+                    取消
+                </button>
+                <button onclick="saveJournal()" id="saveBtn" class="px-6 py-2 bg-blue-600 hover:bg-blue-700 rounded-lg font-semibold transition-colors">
+                    <i class="fas fa-save mr-2"></i>保存
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- View Journal Modal -->
+    <div id="viewModal" class="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
+        <div class="bg-gray-800 rounded-2xl w-full max-w-4xl max-h-[90vh] overflow-hidden flex flex-col">
+            <div class="p-4 border-b border-gray-700 flex items-center justify-between">
+                <h2 id="viewModalTitle" class="text-xl font-semibold"></h2>
+                <div class="flex items-center gap-2">
+                    <button onclick="editCurrentJournal()" class="text-gray-400 hover:text-blue-400 p-2">
+                        <i class="fas fa-edit"></i>
+                    </button>
+                    <button onclick="deleteCurrentJournal()" class="text-gray-400 hover:text-red-400 p-2">
+                        <i class="fas fa-trash"></i>
+                    </button>
+                    <button onclick="closeViewModal()" class="text-gray-400 hover:text-white p-2">
+                        <i class="fas fa-times text-xl"></i>
+                    </button>
+                </div>
+            </div>
+            
+            <div class="p-6 overflow-y-auto flex-1">
+                <div id="viewModalMeta" class="flex flex-wrap gap-3 mb-6"></div>
+                <div id="viewModalContent" class="prose prose-invert max-w-none"></div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let journals = [];
+        let currentViewJournal = null;
+        let easyMDE = null;
+
+        // Load user info
+        async function loadUserInfo() {
+            try {
+                const response = await fetch('/api/user');
+                if (response.ok) {
+                    const user = await response.json();
+                    
+                    if (user.name || user.username) {
+                        document.getElementById('userName').textContent = user.name || user.username;
+                    }
+                    if (user.avatar_url) {
+                        document.getElementById('userAvatar').innerHTML = 
+                            `<img src="${user.avatar_url}" class="w-full h-full object-cover" alt="avatar">`;
+                    }
+                    
+                    return user;
+                }
+            } catch (e) {
+                console.error('Failed to load user info:', e);
+            }
+            return null;
+        }
+
+        // Load journals
+        async function loadJournals() {
+            document.getElementById('loadingState').classList.remove('hidden');
+            document.getElementById('journalList').innerHTML = '';
+            document.getElementById('emptyState').classList.add('hidden');
+            document.getElementById('loginRequired').classList.add('hidden');
+            
+            try {
+                const response = await fetch('/api/journals');
+                const data = await response.json();
+                
+                document.getElementById('loadingState').classList.add('hidden');
+                
+                if (data.message && data.message.includes('GitHub')) {
+                    document.getElementById('loginRequired').classList.remove('hidden');
+                    return;
+                }
+                
+                journals = data.journals || [];
+                
+                if (journals.length === 0) {
+                    document.getElementById('emptyState').classList.remove('hidden');
+                } else {
+                    renderJournals();
+                    updateStats();
+                }
+            } catch (e) {
+                console.error('Failed to load journals:', e);
+                document.getElementById('loadingState').classList.add('hidden');
+                document.getElementById('emptyState').classList.remove('hidden');
+            }
+        }
+
+        // Render journal list
+        function renderJournals() {
+            const container = document.getElementById('journalList');
+            container.innerHTML = journals.map(j => `
+                <div class="card rounded-xl p-5 journal-card cursor-pointer transition-all duration-200" onclick="viewJournal(${j.id})">
+                    <div class="flex items-start justify-between mb-3">
+                        <div>
+                            <h3 class="text-lg font-semibold text-white mb-1">${escapeHtml(j.title)}</h3>
+                            <div class="flex items-center gap-3 text-sm text-gray-400">
+                                <span><i class="far fa-calendar mr-1"></i>${j.journal_date}</span>
+                                ${j.ticker ? `<span class="text-blue-400"><i class="fas fa-chart-line mr-1"></i>${j.ticker}</span>` : ''}
+                            </div>
+                        </div>
+                        <div class="flex items-center gap-2">
+                            ${j.mood ? getMoodBadge(j.mood) : ''}
+                            ${j.trade_type ? getTradeTypeBadge(j.trade_type) : ''}
+                        </div>
+                    </div>
+                    <p class="text-gray-400 text-sm line-clamp-2">${escapeHtml(j.content.substring(0, 150))}${j.content.length > 150 ? '...' : ''}</p>
+                    ${j.tags && j.tags.length > 0 ? `
+                        <div class="flex flex-wrap gap-2 mt-3">
+                            ${j.tags.map(tag => `<span class="px-2 py-1 bg-gray-700 rounded text-xs text-gray-300">#${escapeHtml(tag)}</span>`).join('')}
+                        </div>
+                    ` : ''}
+                </div>
+            `).join('');
+        }
+
+        function getMoodBadge(mood) {
+            const moods = {
+                'bullish': { icon: '🐂', text: '看涨', class: 'mood-bullish' },
+                'bearish': { icon: '🐻', text: '看跌', class: 'mood-bearish' },
+                'neutral': { icon: '😐', text: '中性', class: 'mood-neutral' },
+                'cautious': { icon: '⚠️', text: '谨慎', class: 'mood-cautious' }
+            };
+            const m = moods[mood];
+            if (!m) return '';
+            return `<span class="px-2 py-1 rounded text-xs ${m.class}">${m.icon} ${m.text}</span>`;
+        }
+
+        function getTradeTypeBadge(type) {
+            const types = {
+                'buy': { icon: '📈', text: '买入', class: 'trade-buy' },
+                'sell': { icon: '📉', text: '卖出', class: 'trade-sell' },
+                'hold': { icon: '⏸️', text: '持有', class: 'trade-hold' },
+                'watch': { icon: '👀', text: '观望', class: 'trade-watch' }
+            };
+            const t = types[type];
+            if (!t) return '';
+            return `<span class="px-2 py-1 bg-gray-700 rounded text-xs ${t.class}">${t.icon} ${t.text}</span>`;
+        }
+
+        function updateStats() {
+            document.getElementById('totalCount').textContent = journals.length;
+            
+            // This month
+            const now = new Date();
+            const thisMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+            const thisMonthCount = journals.filter(j => j.journal_date.startsWith(thisMonth)).length;
+            document.getElementById('thisMonthCount').textContent = thisMonthCount;
+            
+            // Unique tickers
+            const tickers = new Set(journals.filter(j => j.ticker).map(j => j.ticker));
+            document.getElementById('tickerCount').textContent = tickers.size;
+            
+            // Streak (simplified)
+            document.getElementById('streakDays').textContent = calculateStreak();
+        }
+
+        function calculateStreak() {
+            if (journals.length === 0) return 0;
+            
+            const dates = [...new Set(journals.map(j => j.journal_date))].sort().reverse();
+            let streak = 0;
+            let expectedDate = new Date();
+            
+            for (const dateStr of dates) {
+                const date = new Date(dateStr);
+                const diff = Math.floor((expectedDate - date) / (1000 * 60 * 60 * 24));
+                
+                if (diff <= 1) {
+                    streak++;
+                    expectedDate = date;
+                } else {
+                    break;
+                }
+            }
+            
+            return streak;
+        }
+
+        // Modal functions
+        function openNewJournalModal() {
+            document.getElementById('editJournalId').value = '';
+            document.getElementById('modalTitle').innerHTML = '<i class="fas fa-edit mr-2"></i>写日记';
+            document.getElementById('journalForm').reset();
+            document.getElementById('journalDate').value = new Date().toISOString().split('T')[0];
+            document.getElementById('journalModal').classList.remove('hidden');
+        }
+
+        function closeJournalModal() {
+            document.getElementById('journalModal').classList.add('hidden');
+        }
+
+        function openEditModal(journal) {
+            document.getElementById('editJournalId').value = journal.id;
+            document.getElementById('modalTitle').innerHTML = '<i class="fas fa-edit mr-2"></i>编辑日记';
+            document.getElementById('journalTitle').value = journal.title;
+            document.getElementById('journalDate').value = journal.journal_date;
+            document.getElementById('journalTicker').value = journal.ticker || '';
+            document.getElementById('journalTradeType').value = journal.trade_type || '';
+            document.getElementById('journalMood').value = journal.mood || '';
+            document.getElementById('journalPrice').value = journal.trade_price || '';
+            document.getElementById('journalTags').value = journal.tags ? journal.tags.join(',') : '';
+            document.getElementById('journalContent').value = journal.content;
+            document.getElementById('journalModal').classList.remove('hidden');
+        }
+
+        async function saveJournal() {
+            const id = document.getElementById('editJournalId').value;
+            const data = {
+                title: document.getElementById('journalTitle').value.trim(),
+                content: document.getElementById('journalContent').value.trim(),
+                journal_date: document.getElementById('journalDate').value,
+                ticker: document.getElementById('journalTicker').value.trim() || null,
+                trade_type: document.getElementById('journalTradeType').value || null,
+                mood: document.getElementById('journalMood').value || null,
+                trade_price: document.getElementById('journalPrice').value.trim() || null,
+                tags: document.getElementById('journalTags').value.trim() 
+                    ? document.getElementById('journalTags').value.split(',').map(t => t.trim()).filter(t => t)
+                    : null
+            };
+            
+            if (!data.title || !data.content || !data.journal_date) {
+                alert('请填写标题、日期和内容');
+                return;
+            }
+            
+            const saveBtn = document.getElementById('saveBtn');
+            saveBtn.disabled = true;
+            saveBtn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i>保存中...';
+            
+            try {
+                const url = id ? `/api/journals/${id}` : '/api/journals';
+                const method = id ? 'PUT' : 'POST';
+                
+                const response = await fetch(url, {
+                    method: method,
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(data)
+                });
+                
+                if (response.ok) {
+                    closeJournalModal();
+                    loadJournals();
+                } else {
+                    const error = await response.json();
+                    alert(error.detail || '保存失败');
+                }
+            } catch (e) {
+                alert('保存失败: ' + e.message);
+            } finally {
+                saveBtn.disabled = false;
+                saveBtn.innerHTML = '<i class="fas fa-save mr-2"></i>保存';
+            }
+        }
+
+        function viewJournal(id) {
+            const journal = journals.find(j => j.id === id);
+            if (!journal) return;
+            
+            currentViewJournal = journal;
+            
+            document.getElementById('viewModalTitle').textContent = journal.title;
+            
+            // Meta info
+            let meta = `<span class="text-gray-400"><i class="far fa-calendar mr-1"></i>${journal.journal_date}</span>`;
+            if (journal.ticker) {
+                meta += `<span class="text-blue-400"><i class="fas fa-chart-line mr-1"></i>${journal.ticker}</span>`;
+            }
+            if (journal.mood) {
+                meta += getMoodBadge(journal.mood);
+            }
+            if (journal.trade_type) {
+                meta += getTradeTypeBadge(journal.trade_type);
+            }
+            if (journal.trade_price) {
+                meta += `<span class="text-gray-400"><i class="fas fa-dollar-sign mr-1"></i>${escapeHtml(journal.trade_price)}</span>`;
+            }
+            document.getElementById('viewModalMeta').innerHTML = meta;
+            
+            // Content (render Markdown)
+            document.getElementById('viewModalContent').innerHTML = marked.parse(journal.content);
+            
+            document.getElementById('viewModal').classList.remove('hidden');
+        }
+
+        function closeViewModal() {
+            document.getElementById('viewModal').classList.add('hidden');
+            currentViewJournal = null;
+        }
+
+        function editCurrentJournal() {
+            if (currentViewJournal) {
+                closeViewModal();
+                openEditModal(currentViewJournal);
+            }
+        }
+
+        async function deleteCurrentJournal() {
+            if (!currentViewJournal) return;
+            
+            if (!confirm('确定要删除这篇日记吗？')) return;
+            
+            try {
+                const response = await fetch(`/api/journals/${currentViewJournal.id}`, {
+                    method: 'DELETE'
+                });
+                
+                if (response.ok) {
+                    closeViewModal();
+                    loadJournals();
+                } else {
+                    const error = await response.json();
+                    alert(error.detail || '删除失败');
+                }
+            } catch (e) {
+                alert('删除失败: ' + e.message);
+            }
+        }
+
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        // Initialize
+        document.addEventListener('DOMContentLoaded', async () => {
+            await loadUserInfo();
+            await loadJournals();
+        });
+    </script>
+</body>
+</html>

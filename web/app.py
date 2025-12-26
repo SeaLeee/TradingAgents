@@ -32,10 +32,14 @@ from tradingagents.default_config import DEFAULT_CONFIG
 
 # Import database and auth modules - handle both package and direct imports
 try:
-    from .database import get_db, init_db, get_user_by_id, can_user_analyze, save_analysis
+    from .database import (get_db, init_db, get_user_by_id, can_user_analyze, save_analysis,
+                           create_journal, get_user_journals, get_user_journal_by_id, 
+                           update_journal, delete_journal, get_user_journal_count)
     from . import auth as github_auth
 except ImportError:
-    from database import get_db, init_db, get_user_by_id, can_user_analyze, save_analysis
+    from database import (get_db, init_db, get_user_by_id, can_user_analyze, save_analysis,
+                          create_journal, get_user_journals, get_user_journal_by_id,
+                          update_journal, delete_journal, get_user_journal_count)
     import auth as github_auth
 
 # Daily analysis limit for GitHub OAuth users
@@ -1707,6 +1711,214 @@ async def translate_text(request: Request, translate_request: TranslateRequest):
         
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Translation failed: {str(e)}")
+
+
+# ============== Trading Journal API ==============
+
+class JournalCreate(BaseModel):
+    title: str
+    content: str
+    journal_date: str
+    ticker: Optional[str] = None
+    trade_type: Optional[str] = None  # buy, sell, hold, watch
+    trade_price: Optional[str] = None
+    tags: Optional[List[str]] = None
+    mood: Optional[str] = None  # bullish, bearish, neutral, cautious
+
+
+class JournalUpdate(BaseModel):
+    title: Optional[str] = None
+    content: Optional[str] = None
+    journal_date: Optional[str] = None
+    ticker: Optional[str] = None
+    trade_type: Optional[str] = None
+    trade_price: Optional[str] = None
+    tags: Optional[List[str]] = None
+    mood: Optional[str] = None
+
+
+@app.get("/api/journals")
+async def get_journals(request: Request, limit: int = 50, offset: int = 0):
+    """Get current user's trading journals"""
+    token = get_session_token(request)
+    if not verify_session(token):
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    
+    current_user = get_current_user(request)
+    if not current_user or current_user.get("id", 0) <= 0:
+        # Password login users don't have database ID
+        return {"journals": [], "total": 0, "message": "Journal feature requires GitHub login"}
+    
+    user_id = current_user["id"]
+    
+    with get_db() as db:
+        journals = get_user_journals(db, user_id, limit=limit, offset=offset)
+        total = get_user_journal_count(db, user_id)
+        
+        return {
+            "journals": [j.to_dict() for j in journals],
+            "total": total,
+            "limit": limit,
+            "offset": offset
+        }
+
+
+@app.post("/api/journals")
+async def create_journal_entry(request: Request, journal_data: JournalCreate):
+    """Create a new trading journal entry"""
+    token = get_session_token(request)
+    if not verify_session(token):
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    
+    current_user = get_current_user(request)
+    if not current_user or current_user.get("id", 0) <= 0:
+        raise HTTPException(status_code=403, detail="Journal feature requires GitHub login")
+    
+    user_id = current_user["id"]
+    
+    # Convert tags list to comma-separated string
+    tags_str = ",".join(journal_data.tags) if journal_data.tags else None
+    
+    with get_db() as db:
+        journal = create_journal(
+            db,
+            user_id=user_id,
+            title=journal_data.title,
+            content=journal_data.content,
+            journal_date=journal_data.journal_date,
+            ticker=journal_data.ticker.upper() if journal_data.ticker else None,
+            trade_type=journal_data.trade_type,
+            trade_price=journal_data.trade_price,
+            tags=tags_str,
+            mood=journal_data.mood
+        )
+        
+        return {"message": "Journal created", "journal": journal.to_dict()}
+
+
+@app.get("/api/journals/{journal_id}")
+async def get_journal_detail(request: Request, journal_id: int):
+    """Get a specific journal entry"""
+    token = get_session_token(request)
+    if not verify_session(token):
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    
+    current_user = get_current_user(request)
+    if not current_user or current_user.get("id", 0) <= 0:
+        raise HTTPException(status_code=403, detail="Journal feature requires GitHub login")
+    
+    user_id = current_user["id"]
+    
+    with get_db() as db:
+        journal = get_user_journal_by_id(db, user_id, journal_id)
+        if not journal:
+            raise HTTPException(status_code=404, detail="Journal not found")
+        
+        return {"journal": journal.to_dict()}
+
+
+@app.put("/api/journals/{journal_id}")
+async def update_journal_entry(request: Request, journal_id: int, journal_data: JournalUpdate):
+    """Update a journal entry"""
+    token = get_session_token(request)
+    if not verify_session(token):
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    
+    current_user = get_current_user(request)
+    if not current_user or current_user.get("id", 0) <= 0:
+        raise HTTPException(status_code=403, detail="Journal feature requires GitHub login")
+    
+    user_id = current_user["id"]
+    
+    with get_db() as db:
+        journal = get_user_journal_by_id(db, user_id, journal_id)
+        if not journal:
+            raise HTTPException(status_code=404, detail="Journal not found")
+        
+        # Build update dict from provided fields
+        update_data = {}
+        if journal_data.title is not None:
+            update_data["title"] = journal_data.title
+        if journal_data.content is not None:
+            update_data["content"] = journal_data.content
+        if journal_data.journal_date is not None:
+            update_data["journal_date"] = journal_data.journal_date
+        if journal_data.ticker is not None:
+            update_data["ticker"] = journal_data.ticker.upper() if journal_data.ticker else None
+        if journal_data.trade_type is not None:
+            update_data["trade_type"] = journal_data.trade_type
+        if journal_data.trade_price is not None:
+            update_data["trade_price"] = journal_data.trade_price
+        if journal_data.tags is not None:
+            update_data["tags"] = ",".join(journal_data.tags) if journal_data.tags else None
+        if journal_data.mood is not None:
+            update_data["mood"] = journal_data.mood
+        
+        if update_data:
+            journal = update_journal(db, journal, **update_data)
+        
+        return {"message": "Journal updated", "journal": journal.to_dict()}
+
+
+@app.delete("/api/journals/{journal_id}")
+async def delete_journal_entry(request: Request, journal_id: int):
+    """Delete a journal entry"""
+    token = get_session_token(request)
+    if not verify_session(token):
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    
+    current_user = get_current_user(request)
+    if not current_user or current_user.get("id", 0) <= 0:
+        raise HTTPException(status_code=403, detail="Journal feature requires GitHub login")
+    
+    user_id = current_user["id"]
+    
+    with get_db() as db:
+        journal = get_user_journal_by_id(db, user_id, journal_id)
+        if not journal:
+            raise HTTPException(status_code=404, detail="Journal not found")
+        
+        delete_journal(db, journal)
+        
+        return {"message": "Journal deleted", "id": journal_id}
+
+
+@app.get("/journal", response_class=HTMLResponse)
+async def journal_page(request: Request):
+    """Serve the trading journal page (protected)"""
+    token = get_session_token(request)
+    if not verify_session(token):
+        return RedirectResponse(url="/login", status_code=302)
+    
+    html_path = os.path.join(os.path.dirname(__file__), "templates", "journal.html")
+    if os.path.exists(html_path):
+        with open(html_path, "r", encoding="utf-8") as f:
+            return HTMLResponse(content=f.read())
+    
+    # Return a basic journal page if template not found
+    return HTMLResponse(content=get_journal_html())
+
+
+def get_journal_html():
+    """Return basic journal HTML if template not found"""
+    return """
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>交易日记 - TradingAgents</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-900 text-white min-h-screen">
+    <div class="container mx-auto px-4 py-8">
+        <h1 class="text-4xl font-bold text-center mb-8">📔 交易日记</h1>
+        <p class="text-center text-gray-400">请使用完整的模板页面</p>
+        <p class="text-center mt-4"><a href="/dashboard" class="text-blue-400 hover:underline">返回首页</a></p>
+    </div>
+</body>
+</html>
+"""
 
 
 def get_default_html():
