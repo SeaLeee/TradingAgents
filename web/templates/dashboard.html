@@ -95,7 +95,17 @@
             </a>
         </nav>
         
+        <!-- 用户信息区域 -->
         <div class="absolute bottom-0 left-0 right-0 p-4 border-t border-gray-700">
+            <div id="userInfo" class="flex items-center gap-3 mb-3">
+                <div id="userAvatar" class="w-10 h-10 rounded-full bg-gray-700 flex items-center justify-center overflow-hidden">
+                    <i class="fas fa-user text-gray-400"></i>
+                </div>
+                <div class="flex-1 min-w-0">
+                    <p id="userName" class="text-white font-medium truncate">用户</p>
+                    <p id="userEmail" class="text-gray-400 text-sm truncate"></p>
+                </div>
+            </div>
             <a href="/logout" class="flex items-center gap-2 text-gray-400 hover:text-white transition-colors">
                 <i class="fas fa-sign-out-alt"></i>
                 <span>退出登录</span>
@@ -851,6 +861,31 @@
             pointer.style.left = `calc(${index}% - 8px)`;
         }
 
+        // 加载用户信息
+        async function loadUserInfo() {
+            try {
+                const response = await fetch('/api/user');
+                if (response.ok) {
+                    const user = await response.json();
+                    const userName = document.getElementById('userName');
+                    const userEmail = document.getElementById('userEmail');
+                    const userAvatar = document.getElementById('userAvatar');
+                    
+                    if (user.name || user.username) {
+                        userName.textContent = user.name || user.username;
+                    }
+                    if (user.email) {
+                        userEmail.textContent = user.email;
+                    }
+                    if (user.avatar_url) {
+                        userAvatar.innerHTML = `<img src="${user.avatar_url}" class="w-full h-full object-cover" alt="avatar">`;
+                    }
+                }
+            } catch (e) {
+                console.log('Failed to load user info');
+            }
+        }
+
         document.getElementById('stockInput').addEventListener('keypress', function(e) {
             if (e.key === 'Enter') {
                 searchStock();
@@ -858,6 +893,7 @@
         });
 
         document.addEventListener('DOMContentLoaded', function() {
+            loadUserInfo();
             loadMarketOverview();
             loadFearGreedIndex();
 

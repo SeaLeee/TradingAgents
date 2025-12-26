@@ -43,11 +43,19 @@
                     <span>信息中心</span>
                 </a>
             </div>
-            <!-- Logout Button -->
-            <a href="/logout" class="absolute right-0 top-0 bg-gray-700 hover:bg-gray-600 text-gray-300 px-4 py-2 rounded-lg text-sm flex items-center space-x-2 transition-colors">
-                <i class="fas fa-sign-out-alt"></i>
-                <span>退出</span>
-            </a>
+            <!-- User Info & Logout -->
+            <div class="absolute right-0 top-0 flex items-center gap-3">
+                <div id="userInfo" class="flex items-center gap-2">
+                    <div id="userAvatar" class="w-8 h-8 rounded-full bg-gray-700 flex items-center justify-center overflow-hidden">
+                        <i class="fas fa-user text-gray-400 text-sm"></i>
+                    </div>
+                    <span id="userName" class="text-gray-300 text-sm hidden md:inline"></span>
+                </div>
+                <a href="/logout" class="bg-gray-700 hover:bg-gray-600 text-gray-300 px-4 py-2 rounded-lg text-sm flex items-center space-x-2 transition-colors">
+                    <i class="fas fa-sign-out-alt"></i>
+                    <span>退出</span>
+                </a>
+            </div>
             
             <h1 class="text-5xl font-bold mb-4">
                 🤖 <span class="bg-gradient-to-r from-blue-400 to-purple-500 bg-clip-text text-transparent">TradingAgents</span>
@@ -242,8 +250,32 @@
         let configData = null;
         let currentTaskId = null;  // Store current task ID for PDF export
 
+        // Load user info
+        async function loadUserInfo() {
+            try {
+                const response = await fetch('/api/user');
+                if (response.ok) {
+                    const user = await response.json();
+                    const userName = document.getElementById('userName');
+                    const userAvatar = document.getElementById('userAvatar');
+                    
+                    if (user.name || user.username) {
+                        userName.textContent = user.name || user.username;
+                    }
+                    if (user.avatar_url) {
+                        userAvatar.innerHTML = `<img src="${user.avatar_url}" class="w-full h-full object-cover" alt="avatar">`;
+                    }
+                }
+            } catch (e) {
+                console.log('Failed to load user info');
+            }
+        }
+
         // Initialize
         document.addEventListener('DOMContentLoaded', async () => {
+            // Load user info
+            loadUserInfo();
+            
             // Set default date
             document.getElementById('date').value = new Date().toISOString().split('T')[0];
             

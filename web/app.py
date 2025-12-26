@@ -1,6 +1,7 @@
 """
 TradingAgents Web Application
 FastAPI server for running trading analysis via web interface
+Supports GitHub OAuth authentication with database storage
 """
 
 import os
@@ -29,6 +30,14 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from tradingagents.graph.trading_graph import TradingAgentsGraph
 from tradingagents.default_config import DEFAULT_CONFIG
 
+# Import database and auth modules - handle both package and direct imports
+try:
+    from .database import get_db, init_db, get_user_by_id
+    from . import auth as github_auth
+except ImportError:
+    from database import get_db, init_db, get_user_by_id
+    import auth as github_auth
+
 app = FastAPI(
     title="TradingAgents",
     description="Multi-Agents LLM Financial Trading Framework",
@@ -37,34 +46,47 @@ app = FastAPI(
     redoc_url=None
 )
 
-# ============== Authentication ==============
-# Get credentials from environment variables
+# ============== Authentication Configuration ==============
+# Get credentials from environment variables (fallback for password login)
 AUTH_USERNAME = os.environ.get("AUTH_USERNAME", "admin")
 AUTH_PASSWORD = os.environ.get("AUTH_PASSWORD", "trading123")  # Change this!
 SESSION_SECRET = os.environ.get("SESSION_SECRET", secrets.token_hex(32))
 
+# GitHub OAuth configuration
+GITHUB_CLIENT_ID = os.environ.get("GITHUB_CLIENT_ID", "")
+GITHUB_CLIENT_SECRET = os.environ.get("GITHUB_CLIENT_SECRET", "")
+
 # ============== TEST MODE ==============
 TEST_MODE = os.getenv("TEST_MODE", "false").lower() == "true"
 
-# Simple session store (in production, use Redis or database)
+# In-memory session store for password login (kept for backward compatibility)
+# For GitHub OAuth, sessions are stored in database
 sessions = {}
+
+# Store OAuth state tokens
+oauth_states = {}
+
 
 def hash_password(password: str) -> str:
     """Hash password with salt"""
     return hashlib.sha256(f"{password}{SESSION_SECRET}".encode()).hexdigest()
 
+
 def verify_password(password: str) -> bool:
     """Verify password"""
     return password == AUTH_PASSWORD
 
-def create_session() -> str:
+
+def create_session(user_data: dict = None) -> str:
     """Create a new session token"""
     token = secrets.token_urlsafe(32)
     sessions[token] = {
         "created": datetime.now(),
-        "expires": datetime.now() + timedelta(hours=24)
+        "expires": datetime.now() + timedelta(hours=24),
+        "user": user_data  # Store user info for display
     }
     return token
+
 
 def verify_session(token: str) -> bool:
     """Verify session token - always returns True in TEST_MODE"""
@@ -72,17 +94,57 @@ def verify_session(token: str) -> bool:
     if TEST_MODE:
         return True
     
-    if not token or token not in sessions:
-        return False
-    session = sessions[token]
-    if datetime.now() > session["expires"]:
-        del sessions[token]
-        return False
-    return True
+    # Check in-memory sessions (password login)
+    if token and token in sessions:
+        session = sessions[token]
+        if datetime.now() > session["expires"]:
+            del sessions[token]
+            return False
+        return True
+    
+    # Check database sessions (GitHub OAuth)
+    if token:
+        with get_db() as db:
+            user = github_auth.validate_session(db, token)
+            if user:
+                return True
+    
+    return False
+
+
+def get_current_user(request: Request) -> Optional[dict]:
+    """Get current user info from session"""
+    token = get_session_token(request)
+    if not token:
+        return None
+    
+    # TEST MODE: Return mock user
+    if TEST_MODE:
+        return {
+            "id": 0,
+            "username": "test_user",
+            "name": "Test User",
+            "avatar_url": None,
+            "is_admin": True
+        }
+    
+    # Check in-memory sessions
+    if token in sessions:
+        return sessions[token].get("user")
+    
+    # Check database sessions (GitHub OAuth)
+    with get_db() as db:
+        user = github_auth.validate_session(db, token)
+        if user:
+            return user.to_dict()
+    
+    return None
+
 
 def get_session_token(request: Request) -> Optional[str]:
     """Extract session token from cookie"""
     return request.cookies.get("session_token")
+
 
 def require_auth(request: Request):
     """Dependency to require authentication"""
@@ -552,20 +614,47 @@ def run_analysis_sync(task_id: str, request: AnalysisRequest):
 
 
 # ============== Login Page ==============
-def get_login_html():
-    """Return login page HTML"""
-    return """
+def get_login_html(error_msg: str = None, github_enabled: bool = False):
+    """Return login page HTML with GitHub OAuth option"""
+    error_html = ""
+    if error_msg:
+        error_html = f'<span class="text-red-400">{error_msg}</span>'
+    else:
+        error_html = "请登录以继续 / Please login to continue"
+    
+    github_button = ""
+    if github_enabled:
+        github_button = """
+            <div class="relative my-6">
+                <div class="absolute inset-0 flex items-center">
+                    <div class="w-full border-t border-gray-600"></div>
+                </div>
+                <div class="relative flex justify-center text-sm">
+                    <span class="px-4 bg-gray-800 text-gray-400">或者 / Or</span>
+                </div>
+            </div>
+            
+            <a href="/auth/github"
+                class="w-full flex items-center justify-center gap-3 bg-gray-700 hover:bg-gray-600 text-white font-semibold py-3 px-6 rounded-lg transition-all duration-200 border border-gray-600">
+                <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+                    <path fill-rule="evenodd" d="M10 0C4.477 0 0 4.484 0 10.017c0 4.425 2.865 8.18 6.839 9.504.5.092.682-.217.682-.483 0-.237-.008-.868-.013-1.703-2.782.605-3.369-1.343-3.369-1.343-.454-1.158-1.11-1.466-1.11-1.466-.908-.62.069-.608.069-.608 1.003.07 1.531 1.032 1.531 1.032.892 1.53 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.113-4.555-4.951 0-1.093.39-1.988 1.029-2.688-.103-.253-.446-1.272.098-2.65 0 0 .84-.27 2.75 1.026A9.564 9.564 0 0110 4.844c.85.004 1.705.115 2.504.337 1.909-1.296 2.747-1.027 2.747-1.027.546 1.379.203 2.398.1 2.651.64.7 1.028 1.595 1.028 2.688 0 3.848-2.339 4.695-4.566 4.942.359.31.678.921.678 1.856 0 1.338-.012 2.419-.012 2.747 0 .268.18.58.688.482A10.019 10.019 0 0020 10.017C20 4.484 15.522 0 10 0z" clip-rule="evenodd"/>
+                </svg>
+                使用 GitHub 登录 / Login with GitHub
+            </a>
+        """
+    
+    return f"""
 <!DOCTYPE html>
-<html lang="en">
+<html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Login - TradingAgents</title>
+    <title>登录 - TradingAgents</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
-        .gradient-bg {
+        .gradient-bg {{
             background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
-        }
+        }}
     </style>
 </head>
 <body class="gradient-bg text-white min-h-screen flex items-center justify-center">
@@ -573,32 +662,34 @@ def get_login_html():
         <div class="bg-gray-800/50 backdrop-blur-lg rounded-2xl p-8 border border-gray-700">
             <div class="text-center mb-8">
                 <h1 class="text-3xl font-bold mb-2">🤖 TradingAgents</h1>
-                <p class="text-gray-400">Please login to continue</p>
+                <p class="text-gray-400">{error_html}</p>
             </div>
             
-            <form action="/login" method="POST" class="space-y-6">
+            {github_button}
+            
+            <form action="/login" method="POST" class="space-y-6 {'mt-6' if github_enabled else ''}">
                 <div>
-                    <label class="block text-sm font-medium text-gray-300 mb-2">Username</label>
+                    <label class="block text-sm font-medium text-gray-300 mb-2">用户名 / Username</label>
                     <input type="text" name="username" required
                         class="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-3 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                        placeholder="Enter username">
+                        placeholder="输入用户名 / Enter username">
                 </div>
                 
                 <div>
-                    <label class="block text-sm font-medium text-gray-300 mb-2">Password</label>
+                    <label class="block text-sm font-medium text-gray-300 mb-2">密码 / Password</label>
                     <input type="password" name="password" required
                         class="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-3 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                        placeholder="Enter password">
+                        placeholder="输入密码 / Enter password">
                 </div>
                 
                 <button type="submit"
                     class="w-full bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700 text-white font-semibold py-3 px-6 rounded-lg transition-all duration-200">
-                    🔐 Login
+                    🔐 登录 / Login
                 </button>
             </form>
             
             <p class="text-center text-gray-500 text-sm mt-6">
-                Protected by session-based authentication
+                安全会话认证 / Protected by session-based authentication
             </p>
         </div>
     </div>
@@ -614,14 +705,26 @@ async def login_page(request: Request):
     token = get_session_token(request)
     if verify_session(token):
         return RedirectResponse(url="/", status_code=302)
-    return HTMLResponse(content=get_login_html())
+    
+    # Check if GitHub OAuth is configured
+    github_enabled = github_auth.is_github_configured()
+    return HTMLResponse(content=get_login_html(github_enabled=github_enabled))
 
 
 @app.post("/login")
 async def login(request: Request, username: str = Form(...), password: str = Form(...)):
-    """Process login form"""
+    """Process login form (password authentication)"""
     if username == AUTH_USERNAME and verify_password(password):
-        token = create_session()
+        # Create session with user info
+        user_data = {
+            "id": 0,
+            "username": username,
+            "name": username,
+            "avatar_url": None,
+            "is_admin": True,
+            "login_type": "password"
+        }
+        token = create_session(user_data)
         response = RedirectResponse(url="/", status_code=302)
         # Check if running in production (Railway sets PORT env var)
         is_production = os.environ.get("RAILWAY_ENVIRONMENT") or os.environ.get("PORT")
@@ -635,12 +738,127 @@ async def login(request: Request, username: str = Form(...), password: str = For
         )
         return response
     else:
+        github_enabled = github_auth.is_github_configured()
         return HTMLResponse(
-            content=get_login_html().replace(
-                "Please login to continue",
-                '<span class="text-red-400">Invalid username or password</span>'
+            content=get_login_html(
+                error_msg="用户名或密码错误 / Invalid username or password",
+                github_enabled=github_enabled
             ),
             status_code=401
+        )
+
+
+# ============== GitHub OAuth Routes ==============
+@app.get("/auth/github")
+async def github_login(request: Request):
+    """Redirect to GitHub OAuth authorization page"""
+    if not github_auth.is_github_configured():
+        raise HTTPException(status_code=500, detail="GitHub OAuth is not configured")
+    
+    # Generate state for CSRF protection
+    state = github_auth.generate_oauth_state()
+    oauth_states[state] = {
+        "created": datetime.now(),
+        "expires": datetime.now() + timedelta(minutes=10)
+    }
+    
+    # Clean up old states
+    now = datetime.now()
+    expired_states = [s for s, v in oauth_states.items() if now > v["expires"]]
+    for s in expired_states:
+        del oauth_states[s]
+    
+    auth_url = github_auth.get_github_authorize_url(state=state)
+    return RedirectResponse(url=auth_url, status_code=302)
+
+
+@app.get("/auth/github/callback")
+async def github_callback(request: Request, code: str = None, state: str = None, error: str = None):
+    """Handle GitHub OAuth callback"""
+    # Check for errors from GitHub
+    if error:
+        return HTMLResponse(
+            content=get_login_html(
+                error_msg=f"GitHub 登录失败: {error}",
+                github_enabled=True
+            ),
+            status_code=400
+        )
+    
+    if not code:
+        return HTMLResponse(
+            content=get_login_html(
+                error_msg="缺少授权码 / Missing authorization code",
+                github_enabled=True
+            ),
+            status_code=400
+        )
+    
+    # Verify state to prevent CSRF
+    if state:
+        if state not in oauth_states:
+            return HTMLResponse(
+                content=get_login_html(
+                    error_msg="无效的状态参数 / Invalid state parameter",
+                    github_enabled=True
+                ),
+                status_code=400
+            )
+        del oauth_states[state]
+    
+    try:
+        # Exchange code for access token
+        access_token = await github_auth.exchange_code_for_token(code)
+        if not access_token:
+            return HTMLResponse(
+                content=get_login_html(
+                    error_msg="获取访问令牌失败 / Failed to get access token",
+                    github_enabled=True
+                ),
+                status_code=400
+            )
+        
+        # Get GitHub user info
+        github_user = await github_auth.get_github_user(access_token)
+        if not github_user:
+            return HTMLResponse(
+                content=get_login_html(
+                    error_msg="获取用户信息失败 / Failed to get user info",
+                    github_enabled=True
+                ),
+                status_code=400
+            )
+        
+        # Create or update user in database
+        with get_db() as db:
+            user = github_auth.create_user_from_github(db, github_user)
+            
+            # Create session in database
+            client_ip = request.client.host if request.client else None
+            user_agent = request.headers.get("user-agent", "")[:500]
+            session, token = github_auth.create_user_session(db, user, client_ip, user_agent)
+        
+        # Redirect to home with session cookie
+        response = RedirectResponse(url="/", status_code=302)
+        is_production = os.environ.get("RAILWAY_ENVIRONMENT") or os.environ.get("PORT")
+        response.set_cookie(
+            key="session_token",
+            value=token,
+            httponly=True,
+            secure=bool(is_production),
+            samesite="lax",
+            max_age=86400 * 7  # 7 days for GitHub OAuth sessions
+        )
+        return response
+        
+    except Exception as e:
+        print(f"GitHub OAuth error: {e}")
+        return HTMLResponse(
+            content=get_login_html(
+                error_msg=f"登录过程中出错 / Login error: {str(e)[:50]}",
+                github_enabled=True
+            ),
+            status_code=500
         )
 
 
@@ -648,11 +866,40 @@ async def login(request: Request, username: str = Form(...), password: str = For
 async def logout(request: Request):
     """Logout and clear session"""
     token = get_session_token(request)
+    
+    # Remove from in-memory sessions
     if token and token in sessions:
         del sessions[token]
+    
+    # Remove from database sessions
+    if token:
+        with get_db() as db:
+            github_auth.logout_user(db, token)
+    
     response = RedirectResponse(url="/login", status_code=302)
     response.delete_cookie("session_token")
     return response
+
+
+# ============== User Info API ==============
+@app.get("/api/user")
+async def get_user_info(request: Request):
+    """Get current user information"""
+    token = get_session_token(request)
+    if not verify_session(token):
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    
+    user = get_current_user(request)
+    if user:
+        return user
+    
+    # Return basic info if no user data
+    return {
+        "id": 0,
+        "username": "user",
+        "name": "User",
+        "avatar_url": None
+    }
 
 
 @app.get("/", response_class=HTMLResponse)
