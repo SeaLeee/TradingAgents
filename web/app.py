@@ -32,11 +32,14 @@ from tradingagents.default_config import DEFAULT_CONFIG
 
 # Import database and auth modules - handle both package and direct imports
 try:
-    from .database import get_db, init_db, get_user_by_id
+    from .database import get_db, init_db, get_user_by_id, can_user_analyze, save_analysis
     from . import auth as github_auth
 except ImportError:
-    from database import get_db, init_db, get_user_by_id
+    from database import get_db, init_db, get_user_by_id, can_user_analyze, save_analysis
     import auth as github_auth
+
+# Daily analysis limit for GitHub OAuth users
+DAILY_ANALYSIS_LIMIT = int(os.getenv("DAILY_ANALYSIS_LIMIT", "1"))
 
 app = FastAPI(
     title="TradingAgents",
@@ -521,6 +524,9 @@ def run_analysis_sync(task_id: str, request: AnalysisRequest):
         analysis_tasks[task_id]["status"] = "running"
         analysis_tasks[task_id]["progress"] = "Initializing agents..."
         
+        # Get user_id for database tracking
+        user_id = analysis_tasks[task_id].get("user_id")
+        
         # TEST MODE: Use mock data
         if TEST_MODE:
             analysis_tasks[task_id]["progress"] = f"[TEST MODE] Generating mock analysis for {request.ticker}..."
@@ -601,9 +607,28 @@ def run_analysis_sync(task_id: str, request: AnalysisRequest):
         analysis_tasks[task_id]["result"] = result
         analysis_tasks[task_id]["progress"] = "Analysis complete!"
         
-        # Save to history with full result
+        # Save to history with full result (JSON file)
         decision_summary = decision[:100] + "..." if len(decision) > 100 else decision
         save_to_history(task_id, analysis_tasks[task_id]["request"], "completed", decision_summary, full_result=result)
+        
+        # Save to database for quota tracking (GitHub OAuth users)
+        if user_id and user_id > 0:
+            try:
+                import json
+                with get_db() as db:
+                    save_analysis(
+                        db,
+                        user_id=user_id,
+                        ticker=request.ticker,
+                        analysis_date=request.date,
+                        llm_provider=request.llm_provider,
+                        decision=decision,
+                        decision_cn=translated.get("decision") if translated else None,
+                        reports=json.dumps(result.get("reports", {})),
+                        reports_cn=json.dumps(translated.get("reports", {})) if translated else None
+                    )
+            except Exception as db_error:
+                print(f"Failed to save analysis to database: {db_error}")
         
     except Exception as e:
         analysis_tasks[task_id]["status"] = "failed"
@@ -884,22 +909,46 @@ async def logout(request: Request):
 # ============== User Info API ==============
 @app.get("/api/user")
 async def get_user_info(request: Request):
-    """Get current user information"""
+    """Get current user information including daily analysis quota"""
     token = get_session_token(request)
     if not verify_session(token):
         raise HTTPException(status_code=401, detail="Not authenticated")
     
     user = get_current_user(request)
-    if user:
-        return user
     
-    # Return basic info if no user data
-    return {
+    # Default response for password login or no user data
+    result = {
         "id": 0,
         "username": "user",
         "name": "User",
-        "avatar_url": None
+        "avatar_url": None,
+        "login_type": "password",
+        "daily_limit": -1,  # -1 means unlimited
+        "used_today": 0,
+        "remaining_today": -1
     }
+    
+    if user:
+        result.update(user)
+        
+        # Check quota for GitHub OAuth users
+        login_type = user.get("login_type")
+        user_id = user.get("id", 0)
+        
+        if login_type != "password" and user_id > 0:
+            # GitHub OAuth user - check daily limit
+            with get_db() as db:
+                can_analyze, used, remaining = can_user_analyze(db, user_id, DAILY_ANALYSIS_LIMIT)
+                result["daily_limit"] = DAILY_ANALYSIS_LIMIT
+                result["used_today"] = used
+                result["remaining_today"] = remaining
+        else:
+            # Password login - unlimited
+            result["daily_limit"] = -1
+            result["used_today"] = 0
+            result["remaining_today"] = -1
+    
+    return result
 
 
 @app.get("/", response_class=HTMLResponse)
@@ -1025,6 +1074,30 @@ async def start_analysis(request: Request, analysis_request: AnalysisRequest, ba
     if not verify_session(token):
         raise HTTPException(status_code=401, detail="Not authenticated")
     
+    # Get current user info
+    current_user = get_current_user(request)
+    user_id = None
+    login_type = None
+    
+    if current_user:
+        user_id = current_user.get("id")
+        login_type = current_user.get("login_type")
+    
+    # Check daily limit for GitHub OAuth users (not password login or TEST_MODE)
+    if not TEST_MODE and login_type != "password" and user_id and user_id > 0:
+        with get_db() as db:
+            can_analyze, used, remaining = can_user_analyze(db, user_id, DAILY_ANALYSIS_LIMIT)
+            if not can_analyze:
+                raise HTTPException(
+                    status_code=429,
+                    detail={
+                        "message": "今日分析次数已用完 / Daily analysis limit reached",
+                        "used": used,
+                        "limit": DAILY_ANALYSIS_LIMIT,
+                        "remaining": 0
+                    }
+                )
+    
     import uuid
     task_id = str(uuid.uuid4())[:8]
     
@@ -1033,7 +1106,8 @@ async def start_analysis(request: Request, analysis_request: AnalysisRequest, ba
         "progress": "Queued for analysis...",
         "result": None,
         "error": None,
-        "request": analysis_request.dict()
+        "request": analysis_request.dict(),
+        "user_id": user_id  # Track which user started this analysis
     }
     
     # Run analysis in background

@@ -50,6 +50,7 @@
                         <i class="fas fa-user text-gray-400 text-sm"></i>
                     </div>
                     <span id="userName" class="text-gray-300 text-sm hidden md:inline"></span>
+                    <span id="quotaInfo" class="text-xs px-2 py-1 rounded bg-gray-700 text-gray-400 hidden"></span>
                 </div>
                 <a href="/logout" class="bg-gray-700 hover:bg-gray-600 text-gray-300 px-4 py-2 rounded-lg text-sm flex items-center space-x-2 transition-colors">
                     <i class="fas fa-sign-out-alt"></i>
@@ -265,9 +266,35 @@
                     if (user.avatar_url) {
                         userAvatar.innerHTML = `<img src="${user.avatar_url}" class="w-full h-full object-cover" alt="avatar">`;
                     }
+                    
+                    // Show quota info for GitHub OAuth users
+                    if (user.daily_limit > 0) {
+                        updateQuotaDisplay(user.daily_limit, user.used_today, user.remaining_today);
+                    }
                 }
             } catch (e) {
                 console.log('Failed to load user info');
+            }
+        }
+        
+        // Update quota display
+        function updateQuotaDisplay(limit, used, remaining) {
+            const quotaInfo = document.getElementById('quotaInfo');
+            if (quotaInfo && limit > 0) {
+                quotaInfo.classList.remove('hidden');
+                if (remaining > 0) {
+                    quotaInfo.textContent = `剩余 ${remaining}/${limit} 次`;
+                    quotaInfo.className = 'text-xs px-2 py-1 rounded bg-green-900/50 text-green-400';
+                } else {
+                    quotaInfo.textContent = `今日已用完 (${limit}次/天)`;
+                    quotaInfo.className = 'text-xs px-2 py-1 rounded bg-red-900/50 text-red-400';
+                    // Disable submit button
+                    const submitBtn = document.getElementById('submitBtn');
+                    if (submitBtn) {
+                        submitBtn.disabled = true;
+                        submitBtn.title = '今日分析次数已用完，明天再来';
+                    }
+                }
             }
         }
 
@@ -477,12 +504,30 @@
                     body: JSON.stringify(request)
                 });
                 
+                // Check for quota exceeded (429)
+                if (response.status === 429) {
+                    const errorData = await response.json();
+                    const detail = errorData.detail || {};
+                    const message = detail.message || '今日分析次数已用完';
+                    showError(`⚠️ ${message}\n每日限制: ${detail.limit || 1} 次\n已使用: ${detail.used || 1} 次`);
+                    resetButton();
+                    // Update quota display
+                    updateQuotaDisplay(detail.limit || 1, detail.used || 1, 0);
+                    return;
+                }
+                
+                if (!response.ok) {
+                    const errorData = await response.json();
+                    throw new Error(errorData.detail || 'Analysis failed');
+                }
+                
                 const data = await response.json();
                 currentTaskId = data.task_id;  // Save task ID for PDF export
                 pollStatus(data.task_id);
                 
             } catch (error) {
                 showError(error.message);
+                resetButton();
             }
         });
 

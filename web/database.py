@@ -282,5 +282,46 @@ def get_analysis_by_id(db, analysis_id: int) -> Optional[AnalysisHistory]:
     return db.query(AnalysisHistory).filter(AnalysisHistory.id == analysis_id).first()
 
 
+def get_user_daily_analysis_count(db, user_id: int) -> int:
+    """
+    Get the number of analyses a user has performed today
+    
+    Args:
+        db: Database session
+        user_id: User ID
+    
+    Returns:
+        Number of analyses today
+    """
+    from sqlalchemy import func
+    today = datetime.utcnow().date()
+    
+    count = db.query(func.count(AnalysisHistory.id))\
+        .filter(AnalysisHistory.user_id == user_id)\
+        .filter(func.date(AnalysisHistory.created_at) == today)\
+        .scalar()
+    
+    return count or 0
+
+
+def can_user_analyze(db, user_id: int, daily_limit: int = 1) -> tuple:
+    """
+    Check if user can perform analysis based on daily limit
+    
+    Args:
+        db: Database session
+        user_id: User ID
+        daily_limit: Maximum analyses per day (default: 1)
+    
+    Returns:
+        Tuple of (can_analyze: bool, used_count: int, remaining: int)
+    """
+    used = get_user_daily_analysis_count(db, user_id)
+    remaining = max(0, daily_limit - used)
+    can_analyze = remaining > 0
+    
+    return can_analyze, used, remaining
+
+
 # Initialize database on module load
 init_db()
