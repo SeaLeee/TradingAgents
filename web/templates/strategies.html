@@ -254,7 +254,7 @@
         // 策略教程数据
         const strategyGuides = {
             'trend_following': {
-                title: '趋势跟踪策略',
+                title: '趋势跟踪策略（双均线）',
                 icon: 'fa-arrow-trend-up',
                 color: 'blue',
                 principle: '趋势跟踪策略基于"趋势一旦形成便会持续"的市场假设。通过识别价格趋势方向，在趋势确立时入场，在趋势反转时出场。',
@@ -263,6 +263,28 @@
                 suitable: '单边趋势行情、牛市或熊市初中期',
                 unsuitable: '震荡盘整行情、趋势不明确时期',
                 tips: ['延长均线周期可减少假信号但会滞后', '结合成交量确认趋势更可靠', '设置止损保护防止趋势反转损失过大']
+            },
+            'rsi': {
+                title: 'RSI 超买超卖策略',
+                icon: 'fa-wave-square',
+                color: 'cyan',
+                principle: 'RSI（相对强弱指数）是衡量价格变动速度和变化幅度的动量指标。RSI在0-100之间波动，通常30以下为超卖区，70以上为超买区。',
+                mechanism: '<div class="space-y-3"><div class="flex items-center gap-3"><div class="w-8 h-8 bg-cyan-600 rounded-full flex items-center justify-center text-sm font-bold">1</div><div>计算14日RSI指标值</div></div><div class="flex items-center gap-3"><div class="w-8 h-8 bg-cyan-600 rounded-full flex items-center justify-center text-sm font-bold">2</div><div>当RSI低于30时产生买入信号（超卖反弹）</div></div><div class="flex items-center gap-3"><div class="w-8 h-8 bg-cyan-600 rounded-full flex items-center justify-center text-sm font-bold">3</div><div>当RSI高于70时产生卖出信号（超买回落）</div></div></div>',
+                diagram: '<div class="bg-gray-800 rounded-lg p-4 text-center"><div class="text-gray-400 mb-2">RSI 指标示意</div><div class="relative h-32"><div class="absolute w-full h-1/3 top-0 bg-red-900/30 border-b border-red-500 flex items-center px-2 text-xs text-red-400">超买区 (70+)</div><div class="absolute w-full h-1/3 top-1/3 bg-gray-700/30 flex items-center px-2 text-xs text-gray-400">中性区</div><div class="absolute w-full h-1/3 bottom-0 bg-green-900/30 border-t border-green-500 flex items-center px-2 text-xs text-green-400">超卖区 (30-)</div></div></div>',
+                suitable: '震荡盘整行情、区间波动市场',
+                unsuitable: '强趋势行情（会持续超买/超卖）',
+                tips: ['在强趋势中RSI可能长期处于超买/超卖', '结合价格形态确认反转信号', '可调整阈值适应不同市场']
+            },
+            'macd': {
+                title: 'MACD 金叉死叉策略',
+                icon: 'fa-chart-line',
+                color: 'pink',
+                principle: 'MACD（指数平滑异同移动平均线）通过快慢均线的差值变化捕捉趋势动量。MACD线上穿信号线为金叉（买入），下穿为死叉（卖出）。',
+                mechanism: '<div class="space-y-3"><div class="flex items-center gap-3"><div class="w-8 h-8 bg-pink-600 rounded-full flex items-center justify-center text-sm font-bold">1</div><div>计算12日和26日EMA的差值（MACD线）</div></div><div class="flex items-center gap-3"><div class="w-8 h-8 bg-pink-600 rounded-full flex items-center justify-center text-sm font-bold">2</div><div>计算MACD线的9日EMA（信号线）</div></div><div class="flex items-center gap-3"><div class="w-8 h-8 bg-pink-600 rounded-full flex items-center justify-center text-sm font-bold">3</div><div>MACD上穿信号线买入，下穿卖出</div></div></div>',
+                diagram: '<div class="bg-gray-800 rounded-lg p-4 text-center"><div class="text-gray-400 mb-2">MACD 交叉示意</div><div class="flex items-end justify-center gap-1 h-32"><div class="w-2 bg-red-500 rounded-t" style="height:60%"></div><div class="w-2 bg-red-400 rounded-t" style="height:45%"></div><div class="w-2 bg-yellow-500 rounded-t" style="height:30%"></div><div class="w-2 bg-green-400 rounded-t" style="height:40%"></div><div class="w-2 bg-green-500 rounded-t" style="height:55%"></div><div class="w-2 bg-green-600 rounded-t" style="height:70%"></div><div class="w-2 bg-green-500 rounded-t" style="height:60%"></div><div class="w-2 bg-yellow-500 rounded-t" style="height:45%"></div></div><div class="text-xs mt-2 text-gray-400">MACD上穿信号线 → 金叉买入 | 下穿 → 死叉卖出</div></div>',
+                suitable: '趋势形成初期、中期趋势跟踪',
+                unsuitable: '震荡盘整、趋势末期',
+                tips: ['MACD有一定滞后性', '结合柱状图判断动量强弱', '零轴上方金叉信号更强']
             },
             'mean_reversion': {
                 title: '均值回归策略',

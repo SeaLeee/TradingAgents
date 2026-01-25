@@ -1525,14 +1525,14 @@ def init_default_strategies(db):
         {
             "name": "RSI 超买超卖策略",
             "description": "当RSI低于30时买入（超卖），高于70时卖出（超买）。适合震荡市场。",
-            "strategy_type": "mean_reversion",
+            "strategy_type": "rsi",
             "category": "technical",
             "default_params": {"rsi_period": 14, "oversold": 30, "overbought": 70}
         },
         {
             "name": "MACD 金叉死叉策略",
             "description": "MACD线上穿信号线时买入，下穿时卖出。捕捉趋势变化。",
-            "strategy_type": "trend_following",
+            "strategy_type": "macd",
             "category": "technical",
             "default_params": {"fast_period": 12, "slow_period": 26, "signal_period": 9}
         },
@@ -1559,24 +1559,24 @@ def init_default_strategies(db):
         },
         {
             "name": "价值投资策略",
-            "description": "基于PE、PB等估值指标，买入低估值的股票。",
+            "description": "使用长期均值回归方法识别低估值买入机会，适合价值投资理念。",
             "strategy_type": "value",
             "category": "fundamental",
-            "default_params": {"max_pe": 15, "max_pb": 2}
+            "default_params": {"ma_period": 50, "deviation_threshold": 0.03}
         },
         {
             "name": "成长股策略",
-            "description": "基于营收和利润增长率，选择高成长性股票。",
+            "description": "追踪高动量成长股，捕捉强势上涨趋势。",
             "strategy_type": "growth",
             "category": "fundamental",
-            "default_params": {"min_revenue_growth": 0.2, "min_earnings_growth": 0.15}
+            "default_params": {"lookback_period": 20, "momentum_threshold": 0.05}
         },
         {
             "name": "低波动防御策略",
             "description": "偏好波动率较低的标的，使用更温和的均值回归参数。",
             "strategy_type": "custom",
             "category": "risk",
-            "default_params": {"base_strategy": "mean_reversion", "ma_period": 60, "deviation_threshold": 0.015}
+            "default_params": {"base_strategy": "value", "ma_period": 60, "deviation_threshold": 0.015}
         },
         {
             "name": "趋势强化 (长短均线)",
@@ -1604,7 +1604,7 @@ def init_default_strategies(db):
             "description": "在动量快速衰减时转向均值回归，偏向反转交易。",
             "strategy_type": "custom",
             "category": "quantitative",
-            "default_params": {"base_strategy": "mean_reversion", "ma_period": 15, "deviation_threshold": 0.025}
+            "default_params": {"base_strategy": "value", "ma_period": 15, "deviation_threshold": 0.025}
         }
     ]
     

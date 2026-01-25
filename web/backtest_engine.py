@@ -64,7 +64,8 @@ def run_moving_average_crossover(
     initial_capital: float = 100000,
     short_window: int = 20,
     long_window: int = 50,
-    commission: float = 0.001
+    commission: float = 0.001,
+    **kwargs  # 忽略多余参数
 ) -> Dict:
     """Moving Average Crossover Strategy"""
     df = calculate_technical_indicators(df.copy())
@@ -86,7 +87,8 @@ def run_rsi_strategy(
     rsi_period: int = 14,
     oversold: float = 30,
     overbought: float = 70,
-    commission: float = 0.001
+    commission: float = 0.001,
+    **kwargs  # 忽略多余参数
 ) -> Dict:
     """RSI Overbought/Oversold Strategy"""
     df = calculate_technical_indicators(df.copy())
@@ -108,7 +110,8 @@ def run_macd_strategy(
     fast_period: int = 12,
     slow_period: int = 26,
     signal_period: int = 9,
-    commission: float = 0.001
+    commission: float = 0.001,
+    **kwargs  # 忽略多余参数
 ) -> Dict:
     """MACD Crossover Strategy"""
     df = calculate_technical_indicators(df.copy())
@@ -129,7 +132,8 @@ def run_bollinger_bands_strategy(
     initial_capital: float = 100000,
     period: int = 20,
     std_dev: float = 2,
-    commission: float = 0.001
+    commission: float = 0.001,
+    **kwargs  # 忽略多余参数
 ) -> Dict:
     """Bollinger Bands Breakout Strategy"""
     df = calculate_technical_indicators(df.copy())
@@ -150,7 +154,8 @@ def run_momentum_strategy(
     initial_capital: float = 100000,
     lookback_period: int = 20,
     momentum_threshold: float = 0.05,
-    commission: float = 0.001
+    commission: float = 0.001,
+    **kwargs  # 忽略多余参数
 ) -> Dict:
     """Momentum Strategy"""
     df = calculate_technical_indicators(df.copy())
@@ -171,7 +176,8 @@ def run_mean_reversion_strategy(
     initial_capital: float = 100000,
     ma_period: int = 20,
     deviation_threshold: float = 0.02,
-    commission: float = 0.001
+    commission: float = 0.001,
+    **kwargs  # 忽略多余参数
 ) -> Dict:
     """Mean Reversion Strategy"""
     df = calculate_technical_indicators(df.copy())
@@ -217,6 +223,10 @@ STRATEGY_REGISTRY: Dict[str, Dict[str, Any]] = {
         "handler": run_moving_average_crossover,
         "defaults": {"short_window": 20, "long_window": 50},
     },
+    "trend_following": {
+        "handler": run_moving_average_crossover,
+        "defaults": {"short_window": 20, "long_window": 50},
+    },
     "rsi": {
         "handler": run_rsi_strategy,
         "defaults": {"rsi_period": 14, "oversold": 30, "overbought": 70},
@@ -226,6 +236,10 @@ STRATEGY_REGISTRY: Dict[str, Dict[str, Any]] = {
         "defaults": {"fast_period": 12, "slow_period": 26, "signal_period": 9},
     },
     "bollinger_bands": {
+        "handler": run_bollinger_bands_strategy,
+        "defaults": {"period": 20, "std_dev": 2},
+    },
+    "breakout": {
         "handler": run_bollinger_bands_strategy,
         "defaults": {"period": 20, "std_dev": 2},
     },
@@ -247,14 +261,11 @@ STRATEGY_REGISTRY: Dict[str, Dict[str, Any]] = {
     },
     "custom": {
         "handler": run_custom_strategy,
-        "defaults": {"base_strategy": "moving_average_crossover"},
+        "defaults": {"base_strategy": "trend_following"},
     },
 }
 
-STRATEGY_ALIASES: Dict[str, str] = {
-    "trend_following": "moving_average_crossover",
-    "breakout": "bollinger_bands",
-}
+STRATEGY_ALIASES: Dict[str, str] = {}
 
 
 def run_backtest(df: pd.DataFrame, initial_capital: float, commission: float = 0.001) -> Dict:
