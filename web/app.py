@@ -69,6 +69,9 @@ app = FastAPI(
     redoc_url=None
 )
 
+# Store backtest tasks
+app.backtest_tasks = {}
+
 # ============== Authentication Configuration ==============
 # Get credentials from environment variables (fallback for password login)
 AUTH_USERNAME = os.environ.get("AUTH_USERNAME", "admin")
@@ -2464,6 +2467,262 @@ def get_default_html():
         <h1 class="text-4xl font-bold text-center mb-8">🤖 TradingAgents</h1>
         <p class="text-center text-gray-400">Loading interface...</p>
         <p class="text-center mt-4"><a href="/docs" class="text-blue-400 hover:underline">API Documentation</a></p>
+    </div>
+</body>
+</html>
+"""
+
+
+# ==================== Strategy & Backtest API ====================
+
+try:
+    from .backtest_engine import run_strategy_backtest
+    from .database import (
+        get_strategies, get_strategy_by_id, create_strategy,
+        get_user_backtests, get_backtest_by_id, get_user_backtest_by_id,
+        save_backtest_result
+    )
+except ImportError:
+    from backtest_engine import run_strategy_backtest
+    from database import (
+        get_strategies, get_strategy_by_id, create_strategy,
+        get_user_backtests, get_backtest_by_id, get_user_backtest_by_id,
+        save_backtest_result
+    )
+
+
+class BacktestRequest(BaseModel):
+    strategy_id: int
+    ticker: str
+    start_date: str
+    end_date: str
+    initial_capital: float = 100000.0
+    params: Optional[dict] = None
+
+
+@app.get("/api/strategies")
+async def list_strategies(request: Request, category: Optional[str] = None, strategy_type: Optional[str] = None):
+    """List all available strategies"""
+    token = get_session_token(request)
+    if not verify_session(token):
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    
+    current_user = get_current_user(request)
+    user_id = current_user.get("id") if current_user else None
+    
+    with get_db() as db:
+        strategies = get_strategies(db, user_id=user_id, public_only=False, active_only=True)
+        
+        # Filter by category and strategy_type if provided
+        if category:
+            strategies = [s for s in strategies if s.category == category]
+        if strategy_type:
+            strategies = [s for s in strategies if s.strategy_type == strategy_type]
+        
+        return {"strategies": [s.to_dict() for s in strategies]}
+
+
+@app.get("/api/strategies/{strategy_id}")
+async def get_strategy_detail(request: Request, strategy_id: int):
+    """Get strategy details"""
+    token = get_session_token(request)
+    if not verify_session(token):
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    
+    with get_db() as db:
+        strategy = get_strategy_by_id(db, strategy_id)
+        if not strategy:
+            raise HTTPException(status_code=404, detail="Strategy not found")
+        
+        return {"strategy": strategy.to_dict()}
+
+
+@app.post("/api/backtest/run")
+async def run_backtest_endpoint(request: Request, backtest_request: BacktestRequest, background_tasks: BackgroundTasks):
+    """Run a backtest"""
+    token = get_session_token(request)
+    if not verify_session(token):
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    
+    current_user = get_current_user(request)
+    if not current_user or current_user.get("id", 0) <= 0:
+        raise HTTPException(status_code=403, detail="请先登录 / Please login first")
+    
+    user_id = current_user["id"]
+    
+    with get_db() as db:
+        strategy = get_strategy_by_id(db, backtest_request.strategy_id)
+        if not strategy:
+            raise HTTPException(status_code=404, detail="Strategy not found")
+        
+        # Run backtest in background
+        import uuid
+        task_id = str(uuid.uuid4())[:8]
+        
+        # Store task info
+        app.backtest_tasks[task_id] = {
+            "status": "running",
+            "user_id": user_id,
+            "strategy_id": backtest_request.strategy_id,
+            "request": backtest_request.dict()
+        }
+        
+        # Run backtest
+        background_tasks.add_task(
+            execute_backtest,
+            task_id,
+            user_id,
+            backtest_request.strategy_id,
+            strategy.strategy_type,
+            backtest_request.ticker,
+            backtest_request.start_date,
+            backtest_request.end_date,
+            backtest_request.initial_capital,
+            backtest_request.params or strategy.default_params
+        )
+        
+        return {"task_id": task_id, "message": "Backtest started"}
+
+
+def execute_backtest(
+    task_id: str,
+    user_id: int,
+    strategy_id: int,
+    strategy_type: str,
+    ticker: str,
+    start_date: str,
+    end_date: str,
+    initial_capital: float,
+    params: dict
+):
+    """Execute backtest and save results"""
+    try:
+        # Import params if it's a string
+        if isinstance(params, str):
+            import json
+            params = json.loads(params)
+        
+        # Run backtest
+        results = run_strategy_backtest(
+            strategy_type=strategy_type,
+            ticker=ticker,
+            start_date=start_date,
+            end_date=end_date,
+            initial_capital=initial_capital,
+            params=params
+        )
+        
+        if 'error' in results:
+            app.backtest_tasks[task_id]["status"] = "failed"
+            app.backtest_tasks[task_id]["error"] = results['error']
+            return
+        
+        # Save to database
+        with get_db() as db:
+            save_backtest_result(
+                db,
+                user_id=user_id,
+                strategy_id=strategy_id,
+                ticker=ticker,
+                start_date=start_date,
+                end_date=end_date,
+                initial_capital=initial_capital,
+                params=params,
+                results=results
+            )
+        
+        app.backtest_tasks[task_id]["status"] = "completed"
+        app.backtest_tasks[task_id]["results"] = results
+        
+    except Exception as e:
+        app.backtest_tasks[task_id]["status"] = "failed"
+        app.backtest_tasks[task_id]["error"] = str(e)
+
+
+@app.get("/api/backtest/status/{task_id}")
+async def get_backtest_status(request: Request, task_id: str):
+    """Get backtest task status"""
+    token = get_session_token(request)
+    if not verify_session(token):
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    
+    if task_id not in app.backtest_tasks:
+        raise HTTPException(status_code=404, detail="Task not found")
+    
+    return app.backtest_tasks[task_id]
+
+
+@app.get("/api/backtests")
+async def list_backtests(request: Request, strategy_id: Optional[int] = None, limit: int = 50):
+    """List user's backtest results"""
+    token = get_session_token(request)
+    if not verify_session(token):
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    
+    current_user = get_current_user(request)
+    if not current_user or current_user.get("id", 0) <= 0:
+        raise HTTPException(status_code=403, detail="请先登录 / Please login first")
+    
+    user_id = current_user["id"]
+    
+    with get_db() as db:
+        backtests = get_user_backtests(db, user_id, strategy_id=strategy_id, limit=limit)
+        return {"backtests": [b.to_dict() for b in backtests]}
+
+
+@app.get("/api/backtests/{backtest_id}")
+async def get_backtest_detail(request: Request, backtest_id: int):
+    """Get backtest result details"""
+    token = get_session_token(request)
+    if not verify_session(token):
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    
+    current_user = get_current_user(request)
+    if not current_user or current_user.get("id", 0) <= 0:
+        raise HTTPException(status_code=403, detail="请先登录 / Please login first")
+    
+    user_id = current_user["id"]
+    
+    with get_db() as db:
+        backtest = get_user_backtest_by_id(db, user_id, backtest_id)
+        if not backtest:
+            raise HTTPException(status_code=404, detail="Backtest not found")
+        
+        return {"backtest": backtest.to_dict()}
+
+
+@app.get("/strategies", response_class=HTMLResponse)
+async def strategies_page(request: Request):
+    """Serve the strategies page (protected)"""
+    token = get_session_token(request)
+    if not verify_session(token):
+        return RedirectResponse(url="/login", status_code=302)
+    
+    html_path = os.path.join(os.path.dirname(__file__), "templates", "strategies.html")
+    if os.path.exists(html_path):
+        with open(html_path, "r", encoding="utf-8") as f:
+            return HTMLResponse(content=f.read())
+    
+    # Return a basic strategies page if template not found
+    return HTMLResponse(content=get_strategies_html())
+
+
+def get_strategies_html():
+    """Return basic strategies HTML if template not found"""
+    return """
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>量化策略 - TradingAgents</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-900 text-white min-h-screen">
+    <div class="container mx-auto px-4 py-8">
+        <h1 class="text-4xl font-bold text-center mb-8">📊 量化策略</h1>
+        <p class="text-center text-gray-400">请使用完整的模板页面</p>
+        <p class="text-center mt-4"><a href="/dashboard" class="text-blue-400 hover:underline">返回首页</a></p>
     </div>
 </body>
 </html>

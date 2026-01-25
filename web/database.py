@@ -1177,5 +1177,383 @@ def get_portfolio_stats(db, portfolio_id: int) -> dict:
     }
 
 
+# ==================== Strategy & Backtest Models ====================
+
+class Strategy(Base):
+    """Trading Strategy - predefined or user-created strategies"""
+    __tablename__ = "strategies"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=True)  # None for system strategies
+    
+    # Strategy info
+    name = Column(String(200), nullable=False)
+    description = Column(Text, nullable=True)
+    strategy_type = Column(String(50), nullable=False)  # momentum, mean_reversion, trend_following, arbitrage, etc.
+    category = Column(String(50), nullable=True)  # technical, fundamental, quantitative
+    
+    # Strategy parameters (JSON string)
+    default_params = Column(Text, nullable=True)  # JSON string of default parameters
+    
+    # Strategy code/logic (optional, for custom strategies)
+    strategy_code = Column(Text, nullable=True)
+    
+    # Performance metrics (from best backtest)
+    best_sharpe_ratio = Column(String(20), nullable=True)
+    best_total_return = Column(String(20), nullable=True)
+    best_max_drawdown = Column(String(20), nullable=True)
+    best_win_rate = Column(String(20), nullable=True)
+    
+    # Status
+    is_public = Column(Boolean, default=True)  # System strategies are public
+    is_active = Column(Boolean, default=True)
+    
+    # Timestamps
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    
+    # Relationships
+    user = relationship("User", foreign_keys=[user_id])
+    backtests = relationship("BacktestResult", back_populates="strategy", cascade="all, delete-orphan")
+    
+    def __repr__(self):
+        return f"<Strategy {self.name}>"
+    
+    def to_dict(self):
+        import json
+        return {
+            "id": self.id,
+            "user_id": self.user_id,
+            "name": self.name,
+            "description": self.description,
+            "strategy_type": self.strategy_type,
+            "category": self.category,
+            "default_params": json.loads(self.default_params) if self.default_params else {},
+            "best_sharpe_ratio": float(self.best_sharpe_ratio) if self.best_sharpe_ratio else None,
+            "best_total_return": float(self.best_total_return) if self.best_total_return else None,
+            "best_max_drawdown": float(self.best_max_drawdown) if self.best_max_drawdown else None,
+            "best_win_rate": float(self.best_win_rate) if self.best_win_rate else None,
+            "is_public": self.is_public,
+            "is_active": self.is_active,
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+        }
+
+
+class BacktestResult(Base):
+    """Backtest Result - stores backtest execution results"""
+    __tablename__ = "backtest_results"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    strategy_id = Column(Integer, ForeignKey("strategies.id"), nullable=False)
+    
+    # Backtest configuration
+    ticker = Column(String(20), nullable=False, index=True)
+    start_date = Column(String(20), nullable=False)
+    end_date = Column(String(20), nullable=False)
+    initial_capital = Column(String(50), default="100000")
+    
+    # Strategy parameters used (JSON string)
+    params = Column(Text, nullable=True)
+    
+    # Results
+    final_value = Column(String(50), nullable=True)
+    total_return = Column(String(20), nullable=True)  # Percentage
+    annualized_return = Column(String(20), nullable=True)
+    sharpe_ratio = Column(String(20), nullable=True)
+    max_drawdown = Column(String(20), nullable=True)
+    win_rate = Column(String(20), nullable=True)
+    total_trades = Column(Integer, default=0)
+    winning_trades = Column(Integer, default=0)
+    losing_trades = Column(Integer, default=0)
+    avg_win = Column(String(20), nullable=True)
+    avg_loss = Column(String(20), nullable=True)
+    profit_factor = Column(String(20), nullable=True)
+    
+    # Detailed results (JSON string)
+    equity_curve = Column(Text, nullable=True)  # JSON array of daily values
+    trade_history = Column(Text, nullable=True)  # JSON array of trades
+    daily_returns = Column(Text, nullable=True)  # JSON array of daily returns
+    
+    # Status
+    status = Column(String(20), default="completed")  # pending, running, completed, failed
+    error_message = Column(Text, nullable=True)
+    
+    # Timestamps
+    created_at = Column(DateTime, default=datetime.utcnow)
+    completed_at = Column(DateTime, nullable=True)
+    
+    # Relationships
+    user = relationship("User", foreign_keys=[user_id])
+    strategy = relationship("Strategy", back_populates="backtests")
+    
+    def __repr__(self):
+        return f"<BacktestResult {self.ticker} Strategy {self.strategy_id}>"
+    
+    def to_dict(self):
+        import json
+        return {
+            "id": self.id,
+            "user_id": self.user_id,
+            "strategy_id": self.strategy_id,
+            "ticker": self.ticker,
+            "start_date": self.start_date,
+            "end_date": self.end_date,
+            "initial_capital": float(self.initial_capital),
+            "params": json.loads(self.params) if self.params else {},
+            "final_value": float(self.final_value) if self.final_value else None,
+            "total_return": float(self.total_return) if self.total_return else None,
+            "annualized_return": float(self.annualized_return) if self.annualized_return else None,
+            "sharpe_ratio": float(self.sharpe_ratio) if self.sharpe_ratio else None,
+            "max_drawdown": float(self.max_drawdown) if self.max_drawdown else None,
+            "win_rate": float(self.win_rate) if self.win_rate else None,
+            "total_trades": self.total_trades,
+            "winning_trades": self.winning_trades,
+            "losing_trades": self.losing_trades,
+            "avg_win": float(self.avg_win) if self.avg_win else None,
+            "avg_loss": float(self.avg_loss) if self.avg_loss else None,
+            "profit_factor": float(self.profit_factor) if self.profit_factor else None,
+            "equity_curve": json.loads(self.equity_curve) if self.equity_curve else [],
+            "trade_history": json.loads(self.trade_history) if self.trade_history else [],
+            "daily_returns": json.loads(self.daily_returns) if self.daily_returns else [],
+            "status": self.status,
+            "error_message": self.error_message,
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+            "completed_at": self.completed_at.isoformat() if self.completed_at else None,
+        }
+
+
+# ==================== Strategy & Backtest Functions ====================
+
+def create_strategy(
+    db,
+    name: str,
+    description: str,
+    strategy_type: str,
+    category: str = None,
+    default_params: dict = None,
+    user_id: int = None,
+    is_public: bool = True
+) -> Strategy:
+    """Create a new strategy"""
+    import json
+    strategy = Strategy(
+        user_id=user_id,
+        name=name,
+        description=description,
+        strategy_type=strategy_type,
+        category=category,
+        default_params=json.dumps(default_params) if default_params else None,
+        is_public=is_public,
+        is_active=True
+    )
+    db.add(strategy)
+    db.commit()
+    db.refresh(strategy)
+    return strategy
+
+
+def get_strategies(db, user_id: int = None, public_only: bool = True, active_only: bool = True):
+    """Get strategies"""
+    query = db.query(Strategy)
+    
+    if public_only:
+        query = query.filter(Strategy.is_public == True)
+    elif user_id:
+        # Get public strategies OR user's own strategies
+        query = query.filter(
+            (Strategy.is_public == True) | (Strategy.user_id == user_id)
+        )
+    
+    if active_only:
+        query = query.filter(Strategy.is_active == True)
+    
+    return query.order_by(Strategy.created_at.desc()).all()
+
+
+def get_strategy_by_id(db, strategy_id: int) -> Optional[Strategy]:
+    """Get strategy by ID"""
+    return db.query(Strategy).filter(Strategy.id == strategy_id).first()
+
+
+def get_user_backtests(db, user_id: int, strategy_id: int = None, limit: int = 50):
+    """Get user's backtest results"""
+    query = db.query(BacktestResult).filter(BacktestResult.user_id == user_id)
+    
+    if strategy_id:
+        query = query.filter(BacktestResult.strategy_id == strategy_id)
+    
+    return query.order_by(BacktestResult.created_at.desc()).limit(limit).all()
+
+
+def get_backtest_by_id(db, backtest_id: int) -> Optional[BacktestResult]:
+    """Get backtest by ID"""
+    return db.query(BacktestResult).filter(BacktestResult.id == backtest_id).first()
+
+
+def get_user_backtest_by_id(db, user_id: int, backtest_id: int) -> Optional[BacktestResult]:
+    """Get backtest by ID, ensuring it belongs to the user"""
+    return db.query(BacktestResult)\
+        .filter(BacktestResult.id == backtest_id)\
+        .filter(BacktestResult.user_id == user_id)\
+        .first()
+
+
+def save_backtest_result(
+    db,
+    user_id: int,
+    strategy_id: int,
+    ticker: str,
+    start_date: str,
+    end_date: str,
+    initial_capital: float,
+    params: dict,
+    results: dict
+) -> BacktestResult:
+    """Save backtest result to database"""
+    import json
+    from datetime import datetime
+    
+    backtest = BacktestResult(
+        user_id=user_id,
+        strategy_id=strategy_id,
+        ticker=ticker.upper(),
+        start_date=start_date,
+        end_date=end_date,
+        initial_capital=str(initial_capital),
+        params=json.dumps(params) if params else None,
+        final_value=str(results.get('final_value', initial_capital)),
+        total_return=str(results.get('total_return', 0)),
+        annualized_return=str(results.get('annualized_return', 0)),
+        sharpe_ratio=str(results.get('sharpe_ratio', 0)),
+        max_drawdown=str(results.get('max_drawdown', 0)),
+        win_rate=str(results.get('win_rate', 0)),
+        total_trades=results.get('total_trades', 0),
+        winning_trades=results.get('winning_trades', 0),
+        losing_trades=results.get('losing_trades', 0),
+        avg_win=str(results.get('avg_win', 0)),
+        avg_loss=str(results.get('avg_loss', 0)),
+        profit_factor=str(results.get('profit_factor', 0)),
+        equity_curve=json.dumps(results.get('equity_curve', [])),
+        trade_history=json.dumps(results.get('trade_history', [])),
+        daily_returns=json.dumps(results.get('daily_returns', [])),
+        status='completed',
+        completed_at=datetime.utcnow()
+    )
+    db.add(backtest)
+    db.commit()
+    db.refresh(backtest)
+    
+    # Update strategy's best metrics if this is better
+    strategy = get_strategy_by_id(db, strategy_id)
+    if strategy:
+        update_strategy_best_metrics(db, strategy, results)
+    
+    return backtest
+
+
+def update_strategy_best_metrics(db, strategy: Strategy, results: dict):
+    """Update strategy's best metrics if current results are better"""
+    should_update = False
+    
+    sharpe = results.get('sharpe_ratio', 0)
+    if sharpe and (not strategy.best_sharpe_ratio or sharpe > float(strategy.best_sharpe_ratio)):
+        strategy.best_sharpe_ratio = str(sharpe)
+        should_update = True
+    
+    total_return = results.get('total_return', 0)
+    if total_return and (not strategy.best_total_return or total_return > float(strategy.best_total_return)):
+        strategy.best_total_return = str(total_return)
+        should_update = True
+    
+    if should_update:
+        strategy.updated_at = datetime.utcnow()
+        db.commit()
+        db.refresh(strategy)
+
+
+def init_default_strategies(db):
+    """Initialize default strategies in database"""
+    strategies = [
+        {
+            "name": "双均线策略 (Moving Average Crossover)",
+            "description": "当短期均线上穿长期均线时买入，下穿时卖出。经典的趋势跟踪策略。",
+            "strategy_type": "trend_following",
+            "category": "technical",
+            "default_params": {"short_window": 20, "long_window": 50}
+        },
+        {
+            "name": "RSI 超买超卖策略",
+            "description": "当RSI低于30时买入（超卖），高于70时卖出（超买）。适合震荡市场。",
+            "strategy_type": "mean_reversion",
+            "category": "technical",
+            "default_params": {"rsi_period": 14, "oversold": 30, "overbought": 70}
+        },
+        {
+            "name": "MACD 金叉死叉策略",
+            "description": "MACD线上穿信号线时买入，下穿时卖出。捕捉趋势变化。",
+            "strategy_type": "trend_following",
+            "category": "technical",
+            "default_params": {"fast_period": 12, "slow_period": 26, "signal_period": 9}
+        },
+        {
+            "name": "布林带突破策略",
+            "description": "价格突破上轨时买入，跌破下轨时卖出。利用波动率进行交易。",
+            "strategy_type": "breakout",
+            "category": "technical",
+            "default_params": {"period": 20, "std_dev": 2}
+        },
+        {
+            "name": "动量策略 (Momentum)",
+            "description": "基于价格动量，买入近期表现强势的股票，卖出弱势股票。",
+            "strategy_type": "momentum",
+            "category": "technical",
+            "default_params": {"lookback_period": 20, "momentum_threshold": 0.05}
+        },
+        {
+            "name": "均值回归策略",
+            "description": "当价格偏离移动平均线一定幅度时，预期回归均值。",
+            "strategy_type": "mean_reversion",
+            "category": "technical",
+            "default_params": {"ma_period": 20, "deviation_threshold": 0.02}
+        },
+        {
+            "name": "价值投资策略",
+            "description": "基于PE、PB等估值指标，买入低估值的股票。",
+            "strategy_type": "value",
+            "category": "fundamental",
+            "default_params": {"max_pe": 15, "max_pb": 2}
+        },
+        {
+            "name": "成长股策略",
+            "description": "基于营收和利润增长率，选择高成长性股票。",
+            "strategy_type": "growth",
+            "category": "fundamental",
+            "default_params": {"min_revenue_growth": 0.2, "min_earnings_growth": 0.15}
+        }
+    ]
+    
+    for strat_data in strategies:
+        existing = db.query(Strategy).filter(Strategy.name == strat_data["name"]).first()
+        if not existing:
+            create_strategy(
+                db,
+                name=strat_data["name"],
+                description=strat_data["description"],
+                strategy_type=strat_data["strategy_type"],
+                category=strat_data["category"],
+                default_params=strat_data["default_params"],
+                user_id=None,  # System strategy
+                is_public=True
+            )
+
+
 # Initialize database on module load
 init_db()
+
+# Initialize default strategies on first run
+try:
+    with get_db() as db:
+        init_default_strategies(db)
+except Exception as e:
+    print(f"Note: Could not initialize default strategies: {e}")

@@ -1,0 +1,455 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>量化策略回测 - TradingAgents</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <style>
+        .gradient-bg {
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+        }
+        .strategy-card {
+            transition: all 0.3s ease;
+        }
+        .strategy-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.3);
+        }
+    </style>
+</head>
+<body class="gradient-bg min-h-screen text-white">
+    <!-- Navigation -->
+    <nav class="bg-gray-900/90 backdrop-blur-sm border-b border-gray-700 p-4">
+        <div class="max-w-7xl mx-auto flex items-center justify-between">
+            <div class="flex items-center gap-4">
+                <a href="/dashboard" class="text-blue-400 hover:text-blue-300">
+                    <i class="fas fa-home"></i> 首页
+                </a>
+                <span class="text-gray-500">|</span>
+                <h1 class="text-xl font-bold">📊 量化策略回测平台</h1>
+            </div>
+            <div class="flex items-center gap-4">
+                <a href="/logout" class="text-gray-400 hover:text-white">
+                    <i class="fas fa-sign-out-alt"></i> 退出
+                </a>
+            </div>
+        </div>
+    </nav>
+
+    <div class="max-w-7xl mx-auto p-6">
+        <!-- Filter Section -->
+        <div class="bg-gray-800/50 rounded-xl p-6 mb-6 border border-gray-700">
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div>
+                    <label class="block text-sm font-medium text-gray-300 mb-2">策略类型</label>
+                    <select id="filterType" class="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-2 focus:ring-2 focus:ring-blue-500">
+                        <option value="">全部</option>
+                        <option value="trend_following">趋势跟踪</option>
+                        <option value="mean_reversion">均值回归</option>
+                        <option value="momentum">动量策略</option>
+                        <option value="breakout">突破策略</option>
+                        <option value="value">价值投资</option>
+                        <option value="growth">成长股</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-300 mb-2">策略类别</label>
+                    <select id="filterCategory" class="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-2 focus:ring-2 focus:ring-blue-500">
+                        <option value="">全部</option>
+                        <option value="technical">技术分析</option>
+                        <option value="fundamental">基本面分析</option>
+                        <option value="quantitative">量化策略</option>
+                    </select>
+                </div>
+                <div class="flex items-end">
+                    <button onclick="loadStrategies()" class="w-full bg-blue-600 hover:bg-blue-700 px-6 py-2 rounded-lg font-semibold transition-colors">
+                        <i class="fas fa-filter mr-2"></i>筛选
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Strategies Grid -->
+        <div id="strategiesContainer" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
+            <!-- Strategies will be loaded here -->
+        </div>
+
+        <!-- Backtest Modal -->
+        <div id="backtestModal" class="hidden fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+            <div class="bg-gray-800 rounded-2xl p-6 max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+                <div class="flex items-center justify-between mb-6">
+                    <h2 class="text-2xl font-bold">运行回测</h2>
+                    <button onclick="closeBacktestModal()" class="text-gray-400 hover:text-white">
+                        <i class="fas fa-times text-2xl"></i>
+                    </button>
+                </div>
+                
+                <form id="backtestForm" class="space-y-4">
+                    <input type="hidden" id="backtestStrategyId">
+                    
+                    <div>
+                        <label class="block text-sm font-medium text-gray-300 mb-2">股票代码</label>
+                        <input type="text" id="backtestTicker" required
+                            class="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-2 focus:ring-2 focus:ring-blue-500"
+                            placeholder="例如: AAPL, TSLA, NVDA">
+                    </div>
+                    
+                    <div class="grid grid-cols-2 gap-4">
+                        <div>
+                            <label class="block text-sm font-medium text-gray-300 mb-2">开始日期</label>
+                            <input type="date" id="backtestStartDate" required
+                                class="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-2 focus:ring-2 focus:ring-blue-500">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-300 mb-2">结束日期</label>
+                            <input type="date" id="backtestEndDate" required
+                                class="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-2 focus:ring-2 focus:ring-blue-500">
+                        </div>
+                    </div>
+                    
+                    <div>
+                        <label class="block text-sm font-medium text-gray-300 mb-2">初始资金</label>
+                        <input type="number" id="backtestCapital" value="100000" min="1000" step="1000" required
+                            class="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-2 focus:ring-2 focus:ring-blue-500">
+                    </div>
+                    
+                    <div id="strategyParams" class="space-y-3">
+                        <!-- Strategy parameters will be loaded here -->
+                    </div>
+                    
+                    <div class="flex gap-3 pt-4">
+                        <button type="submit" class="flex-1 bg-green-600 hover:bg-green-700 px-6 py-3 rounded-lg font-semibold transition-colors">
+                            <i class="fas fa-play mr-2"></i>开始回测
+                        </button>
+                        <button type="button" onclick="closeBacktestModal()" class="px-6 py-3 bg-gray-700 hover:bg-gray-600 rounded-lg transition-colors">
+                            取消
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        <!-- Results Modal -->
+        <div id="resultsModal" class="hidden fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+            <div class="bg-gray-800 rounded-2xl p-6 max-w-4xl w-full max-h-[90vh] overflow-y-auto">
+                <div class="flex items-center justify-between mb-6">
+                    <h2 class="text-2xl font-bold">回测结果</h2>
+                    <button onclick="closeResultsModal()" class="text-gray-400 hover:text-white">
+                        <i class="fas fa-times text-2xl"></i>
+                    </button>
+                </div>
+                
+                <div id="resultsContent">
+                    <!-- Results will be loaded here -->
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let strategies = [];
+        let currentBacktestTaskId = null;
+
+        async function loadStrategies() {
+            try {
+                const type = document.getElementById('filterType').value;
+                const category = document.getElementById('filterCategory').value;
+                
+                let url = '/api/strategies?';
+                if (type) url += `strategy_type=${type}&`;
+                if (category) url += `category=${category}&`;
+                
+                const response = await fetch(url);
+                if (!response.ok) throw new Error('Failed to load strategies');
+                
+                const data = await response.json();
+                strategies = data.strategies;
+                renderStrategies();
+            } catch (error) {
+                console.error('Error loading strategies:', error);
+                alert('加载策略失败: ' + error.message);
+            }
+        }
+
+        function renderStrategies() {
+            const container = document.getElementById('strategiesContainer');
+            
+            if (strategies.length === 0) {
+                container.innerHTML = '<div class="col-span-full text-center text-gray-400 py-12"><p>暂无策略</p></div>';
+                return;
+            }
+            
+            container.innerHTML = strategies.map(strategy => {
+                const typeLabels = {
+                    'trend_following': '趋势跟踪',
+                    'mean_reversion': '均值回归',
+                    'momentum': '动量策略',
+                    'breakout': '突破策略',
+                    'value': '价值投资',
+                    'growth': '成长股'
+                };
+                
+                const categoryLabels = {
+                    'technical': '技术分析',
+                    'fundamental': '基本面',
+                    'quantitative': '量化'
+                };
+                
+                return `
+                    <div class="strategy-card bg-gray-800/50 rounded-xl p-6 border border-gray-700">
+                        <div class="flex items-start justify-between mb-4">
+                            <div class="flex-1">
+                                <h3 class="text-xl font-bold mb-2">${strategy.name}</h3>
+                                <div class="flex flex-wrap gap-2 mb-3">
+                                    <span class="bg-blue-600/30 text-blue-300 px-2 py-1 rounded text-xs">
+                                        ${typeLabels[strategy.strategy_type] || strategy.strategy_type}
+                                    </span>
+                                    <span class="bg-purple-600/30 text-purple-300 px-2 py-1 rounded text-xs">
+                                        ${categoryLabels[strategy.category] || strategy.category || '其他'}
+                                    </span>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <p class="text-gray-400 text-sm mb-4 line-clamp-2">${strategy.description || '无描述'}</p>
+                        
+                        ${strategy.best_sharpe_ratio !== null ? `
+                        <div class="grid grid-cols-2 gap-3 mb-4 text-sm">
+                            <div class="bg-gray-700/50 rounded-lg p-2">
+                                <div class="text-gray-400 text-xs">最佳夏普比率</div>
+                                <div class="font-semibold">${strategy.best_sharpe_ratio.toFixed(2)}</div>
+                            </div>
+                            <div class="bg-gray-700/50 rounded-lg p-2">
+                                <div class="text-gray-400 text-xs">最佳收益率</div>
+                                <div class="font-semibold ${strategy.best_total_return > 0 ? 'text-green-400' : 'text-red-400'}">
+                                    ${strategy.best_total_return > 0 ? '+' : ''}${strategy.best_total_return.toFixed(2)}%
+                                </div>
+                            </div>
+                        </div>
+                        ` : ''}
+                        
+                        <button onclick="openBacktestModal(${strategy.id})" 
+                            class="w-full bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700 px-4 py-2 rounded-lg font-semibold transition-all">
+                            <i class="fas fa-chart-line mr-2"></i>运行回测
+                        </button>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        async function openBacktestModal(strategyId) {
+            const strategy = strategies.find(s => s.id === strategyId);
+            if (!strategy) return;
+            
+            document.getElementById('backtestStrategyId').value = strategyId;
+            document.getElementById('backtestTicker').value = '';
+            
+            // Set default dates (1 year back to today)
+            const endDate = new Date();
+            const startDate = new Date();
+            startDate.setFullYear(startDate.getFullYear() - 1);
+            
+            document.getElementById('backtestEndDate').value = endDate.toISOString().split('T')[0];
+            document.getElementById('backtestStartDate').value = startDate.toISOString().split('T')[0];
+            
+            // Load strategy parameters
+            const paramsDiv = document.getElementById('strategyParams');
+            paramsDiv.innerHTML = '';
+            
+            if (strategy.default_params && Object.keys(strategy.default_params).length > 0) {
+                paramsDiv.innerHTML = '<h3 class="text-lg font-semibold mb-3">策略参数</h3>';
+                Object.entries(strategy.default_params).forEach(([key, value]) => {
+                    paramsDiv.innerHTML += `
+                        <div>
+                            <label class="block text-sm font-medium text-gray-300 mb-2">${key}</label>
+                            <input type="number" name="param_${key}" value="${value}" step="0.01"
+                                class="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-2 focus:ring-2 focus:ring-blue-500">
+                        </div>
+                    `;
+                });
+            }
+            
+            document.getElementById('backtestModal').classList.remove('hidden');
+        }
+
+        function closeBacktestModal() {
+            document.getElementById('backtestModal').classList.add('hidden');
+        }
+
+        document.getElementById('backtestForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            const strategyId = parseInt(document.getElementById('backtestStrategyId').value);
+            const ticker = document.getElementById('backtestTicker').value.toUpperCase();
+            const startDate = document.getElementById('backtestStartDate').value;
+            const endDate = document.getElementById('backtestEndDate').value;
+            const initialCapital = parseFloat(document.getElementById('backtestCapital').value);
+            
+            // Collect parameters
+            const params = {};
+            const paramInputs = document.querySelectorAll('[name^="param_"]');
+            paramInputs.forEach(input => {
+                const key = input.name.replace('param_', '');
+                params[key] = parseFloat(input.value);
+            });
+            
+            try {
+                const response = await fetch('/api/backtest/run', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({
+                        strategy_id: strategyId,
+                        ticker: ticker,
+                        start_date: startDate,
+                        end_date: endDate,
+                        initial_capital: initialCapital,
+                        params: params
+                    })
+                });
+                
+                if (!response.ok) throw new Error('Failed to start backtest');
+                
+                const data = await response.json();
+                currentBacktestTaskId = data.task_id;
+                
+                closeBacktestModal();
+                pollBacktestStatus();
+                
+            } catch (error) {
+                alert('启动回测失败: ' + error.message);
+            }
+        });
+
+        async function pollBacktestStatus() {
+            if (!currentBacktestTaskId) return;
+            
+            try {
+                const response = await fetch(`/api/backtest/status/${currentBacktestTaskId}`);
+                const status = await response.json();
+                
+                if (status.status === 'completed') {
+                    showBacktestResults(status.results);
+                    currentBacktestTaskId = null;
+                } else if (status.status === 'failed') {
+                    alert('回测失败: ' + (status.error || 'Unknown error'));
+                    currentBacktestTaskId = null;
+                } else {
+                    setTimeout(pollBacktestStatus, 2000);
+                }
+            } catch (error) {
+                console.error('Error polling status:', error);
+                setTimeout(pollBacktestStatus, 2000);
+            }
+        }
+
+        function showBacktestResults(results) {
+            const content = document.getElementById('resultsContent');
+            
+            // Calculate metrics
+            const totalReturn = results.total_return || 0;
+            const sharpeRatio = results.sharpe_ratio || 0;
+            const maxDrawdown = results.max_drawdown || 0;
+            const winRate = results.win_rate || 0;
+            
+            content.innerHTML = `
+                <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+                    <div class="bg-gray-700/50 rounded-lg p-4">
+                        <div class="text-gray-400 text-sm mb-1">总收益率</div>
+                        <div class="text-2xl font-bold ${totalReturn >= 0 ? 'text-green-400' : 'text-red-400'}">
+                            ${totalReturn >= 0 ? '+' : ''}${totalReturn.toFixed(2)}%
+                        </div>
+                    </div>
+                    <div class="bg-gray-700/50 rounded-lg p-4">
+                        <div class="text-gray-400 text-sm mb-1">夏普比率</div>
+                        <div class="text-2xl font-bold">${sharpeRatio.toFixed(2)}</div>
+                    </div>
+                    <div class="bg-gray-700/50 rounded-lg p-4">
+                        <div class="text-gray-400 text-sm mb-1">最大回撤</div>
+                        <div class="text-2xl font-bold text-red-400">${maxDrawdown.toFixed(2)}%</div>
+                    </div>
+                    <div class="bg-gray-700/50 rounded-lg p-4">
+                        <div class="text-gray-400 text-sm mb-1">胜率</div>
+                        <div class="text-2xl font-bold">${winRate.toFixed(2)}%</div>
+                    </div>
+                </div>
+                
+                <div class="mb-6">
+                    <h3 class="text-lg font-semibold mb-3">收益曲线</h3>
+                    <canvas id="equityChart" height="100"></canvas>
+                </div>
+                
+                <div class="grid grid-cols-2 gap-4 mb-6">
+                    <div class="bg-gray-700/50 rounded-lg p-4">
+                        <div class="text-gray-400 text-sm mb-2">交易统计</div>
+                        <div class="space-y-1 text-sm">
+                            <div>总交易次数: ${results.total_trades || 0}</div>
+                            <div>盈利交易: ${results.winning_trades || 0}</div>
+                            <div>亏损交易: ${results.losing_trades || 0}</div>
+                            <div>平均盈利: $${(results.avg_win || 0).toFixed(2)}</div>
+                            <div>平均亏损: $${(results.avg_loss || 0).toFixed(2)}</div>
+                            <div>盈亏比: ${(results.profit_factor || 0).toFixed(2)}</div>
+                        </div>
+                    </div>
+                    <div class="bg-gray-700/50 rounded-lg p-4">
+                        <div class="text-gray-400 text-sm mb-2">其他指标</div>
+                        <div class="space-y-1 text-sm">
+                            <div>年化收益率: ${(results.annualized_return || 0).toFixed(2)}%</div>
+                            <div>最终资金: $${(results.final_value || 0).toFixed(2)}</div>
+                        </div>
+                    </div>
+                </div>
+            `;
+            
+            // Draw equity curve chart
+            if (results.equity_curve && results.equity_curve.length > 0) {
+                const ctx = document.getElementById('equityChart').getContext('2d');
+                new Chart(ctx, {
+                    type: 'line',
+                    data: {
+                        labels: results.equity_curve.map((_, i) => `Day ${i + 1}`),
+                        datasets: [{
+                            label: 'Portfolio Value',
+                            data: results.equity_curve,
+                            borderColor: '#3b82f6',
+                            backgroundColor: 'rgba(59, 130, 246, 0.1)',
+                            tension: 0.4
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: true,
+                        plugins: {
+                            legend: { display: false }
+                        },
+                        scales: {
+                            y: {
+                                beginAtZero: false,
+                                ticks: { color: '#9ca3af' },
+                                grid: { color: 'rgba(255, 255, 255, 0.1)' }
+                            },
+                            x: {
+                                ticks: { color: '#9ca3af' },
+                                grid: { color: 'rgba(255, 255, 255, 0.1)' }
+                            }
+                        }
+                    }
+                });
+            }
+            
+            document.getElementById('resultsModal').classList.remove('hidden');
+        }
+
+        function closeResultsModal() {
+            document.getElementById('resultsModal').classList.add('hidden');
+        }
+
+        // Initialize
+        document.addEventListener('DOMContentLoaded', () => {
+            loadStrategies();
+        });
+    </script>
+</body>
+</html>
