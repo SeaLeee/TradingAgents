@@ -42,7 +42,12 @@ try:
                            close_trade, update_trade, cancel_trade,
                            get_profitable_trades, get_trades_by_strategy,
                            get_trades_by_ticker, create_performance_snapshot,
-                           get_performance_history, get_portfolio_stats)
+                           get_performance_history, get_portfolio_stats,
+                           update_strategy)
+    from .report_generator import generate_backtest_report
+    from .portfolio_analyzer import analyze_portfolio
+    from .signal_generator import generate_signal
+    from .strategy_validator import validate_strategy_payload
     from . import auth as github_auth
 except ImportError:
     from database import (get_db, init_db, get_user_by_id, can_user_analyze, save_analysis,
@@ -55,7 +60,12 @@ except ImportError:
                           close_trade, update_trade, cancel_trade,
                           get_profitable_trades, get_trades_by_strategy,
                           get_trades_by_ticker, create_performance_snapshot,
-                          get_performance_history, get_portfolio_stats)
+                          get_performance_history, get_portfolio_stats,
+                          update_strategy)
+    from report_generator import generate_backtest_report
+    from portfolio_analyzer import analyze_portfolio
+    from signal_generator import generate_signal
+    from strategy_validator import validate_strategy_payload
     import auth as github_auth
 
 # Daily analysis limit for GitHub OAuth users
@@ -2478,14 +2488,14 @@ def get_default_html():
 try:
     from .backtest_engine import run_strategy_backtest
     from .database import (
-        get_strategies, get_strategy_by_id, create_strategy,
+        get_strategies, get_strategy_by_id, create_strategy, update_strategy,
         get_user_backtests, get_backtest_by_id, get_user_backtest_by_id,
         save_backtest_result
     )
 except ImportError:
     from backtest_engine import run_strategy_backtest
     from database import (
-        get_strategies, get_strategy_by_id, create_strategy,
+        get_strategies, get_strategy_by_id, create_strategy, update_strategy,
         get_user_backtests, get_backtest_by_id, get_user_backtest_by_id,
         save_backtest_result
     )
@@ -2498,6 +2508,40 @@ class BacktestRequest(BaseModel):
     end_date: str
     initial_capital: float = 100000.0
     params: Optional[dict] = None
+
+
+class StrategyCreateRequest(BaseModel):
+    name: str
+    description: Optional[str] = None
+    strategy_type: str
+    category: Optional[str] = None
+    default_params: Optional[dict] = None
+    strategy_code: Optional[str] = None
+    is_public: bool = False
+
+
+class StrategyUpdateRequest(BaseModel):
+    name: Optional[str] = None
+    description: Optional[str] = None
+    strategy_type: Optional[str] = None
+    category: Optional[str] = None
+    default_params: Optional[dict] = None
+    strategy_code: Optional[str] = None
+    is_public: Optional[bool] = None
+    is_active: Optional[bool] = None
+
+
+class SignalRequest(BaseModel):
+    ticker: str
+    strategy_type: str
+    params: Optional[dict] = None
+
+
+class DataFetchRequest(BaseModel):
+    ticker: str
+    start_date: Optional[str] = None
+    end_date: Optional[str] = None
+    interval: str = "1d"
 
 
 @app.get("/api/strategies")
@@ -2520,6 +2564,105 @@ async def list_strategies(request: Request, category: Optional[str] = None, stra
             strategies = [s for s in strategies if s.strategy_type == strategy_type]
         
         return {"strategies": [s.to_dict() for s in strategies]}
+
+
+@app.get("/api/strategies/library")
+async def list_strategy_library(request: Request):
+    """List strategies with grouped metadata for library view"""
+    token = get_session_token(request)
+    if not verify_session(token):
+        raise HTTPException(status_code=401, detail="Not authenticated")
+
+    current_user = get_current_user(request)
+    user_id = current_user.get("id") if current_user else None
+
+    with get_db() as db:
+        strategies = get_strategies(db, user_id=user_id, public_only=False, active_only=True)
+        payload = [s.to_dict() for s in strategies]
+
+    categories = sorted({s.get("category") for s in payload if s.get("category")})
+    types = sorted({s.get("strategy_type") for s in payload if s.get("strategy_type")})
+    return {
+        "strategies": payload,
+        "categories": categories,
+        "strategy_types": types,
+    }
+
+
+@app.post("/api/strategies/create")
+async def create_strategy_endpoint(request: Request, data: StrategyCreateRequest):
+    """Create a custom strategy"""
+    token = get_session_token(request)
+    if not verify_session(token):
+        raise HTTPException(status_code=401, detail="Not authenticated")
+
+    current_user = get_current_user(request)
+    if not current_user or current_user.get("id", 0) <= 0:
+        raise HTTPException(status_code=403, detail="请先登录 / Please login first")
+
+    payload = data.dict()
+    is_valid, message = validate_strategy_payload(payload)
+    if not is_valid:
+        raise HTTPException(status_code=400, detail=message)
+
+    with get_db() as db:
+        strategy = create_strategy(
+            db,
+            name=data.name,
+            description=data.description or "",
+            strategy_type=data.strategy_type,
+            category=data.category,
+            default_params=data.default_params,
+            strategy_code=data.strategy_code,
+            user_id=current_user["id"],
+            is_public=data.is_public
+        )
+        return {"strategy": strategy.to_dict()}
+
+
+@app.put("/api/strategies/{strategy_id}/update")
+async def update_strategy_endpoint(request: Request, strategy_id: int, data: StrategyUpdateRequest):
+    """Update a custom strategy"""
+    token = get_session_token(request)
+    if not verify_session(token):
+        raise HTTPException(status_code=401, detail="Not authenticated")
+
+    current_user = get_current_user(request)
+    if not current_user or current_user.get("id", 0) <= 0:
+        raise HTTPException(status_code=403, detail="请先登录 / Please login first")
+
+    with get_db() as db:
+        strategy = get_strategy_by_id(db, strategy_id)
+        if not strategy:
+            raise HTTPException(status_code=404, detail="Strategy not found")
+        if strategy.user_id != current_user["id"]:
+            raise HTTPException(status_code=403, detail="Only owner can update this strategy")
+
+        strategy = update_strategy(
+            db,
+            strategy,
+            name=data.name,
+            description=data.description,
+            strategy_type=data.strategy_type,
+            category=data.category,
+            default_params=data.default_params,
+            strategy_code=data.strategy_code,
+            is_public=data.is_public,
+            is_active=data.is_active
+        )
+        return {"strategy": strategy.to_dict()}
+
+
+@app.post("/api/strategies/validate")
+async def validate_strategy_endpoint(request: Request, data: StrategyCreateRequest):
+    """Validate strategy payload"""
+    token = get_session_token(request)
+    if not verify_session(token):
+        raise HTTPException(status_code=401, detail="Not authenticated")
+
+    payload = data.dict()
+    is_valid, message = validate_strategy_payload(payload)
+    return {"is_valid": is_valid, "message": message}
 
 
 @app.get("/api/strategies/{strategy_id}")
@@ -2691,6 +2834,122 @@ async def get_backtest_detail(request: Request, backtest_id: int):
         return {"backtest": backtest.to_dict()}
 
 
+@app.get("/api/reports/backtest/{backtest_id}")
+async def get_backtest_report(request: Request, backtest_id: int):
+    """Generate a detailed backtest report"""
+    token = get_session_token(request)
+    if not verify_session(token):
+        raise HTTPException(status_code=401, detail="Not authenticated")
+
+    current_user = get_current_user(request)
+    if not current_user or current_user.get("id", 0) <= 0:
+        raise HTTPException(status_code=403, detail="请先登录 / Please login first")
+
+    user_id = current_user["id"]
+    with get_db() as db:
+        backtest = get_user_backtest_by_id(db, user_id, backtest_id)
+        if not backtest:
+            raise HTTPException(status_code=404, detail="Backtest not found")
+        report = generate_backtest_report(backtest.to_dict())
+        return {"report": report}
+
+
+@app.get("/api/portfolios/{portfolio_id}/analysis")
+async def get_portfolio_analysis(request: Request, portfolio_id: int):
+    """Get portfolio analysis and risk metrics"""
+    token = get_session_token(request)
+    if not verify_session(token):
+        raise HTTPException(status_code=401, detail="Not authenticated")
+
+    current_user = get_current_user(request)
+    if not current_user or current_user.get("id", 0) <= 0:
+        raise HTTPException(status_code=403, detail="请先登录 / Please login first")
+
+    user_id = current_user["id"]
+    with get_db() as db:
+        portfolio = get_user_portfolio_by_id(db, user_id, portfolio_id)
+        if not portfolio:
+            raise HTTPException(status_code=404, detail="Portfolio not found")
+        stats = get_portfolio_stats(db, portfolio_id)
+        analysis = analyze_portfolio(stats)
+        return {"analysis": analysis}
+
+
+@app.post("/api/signals/generate")
+async def generate_signal_endpoint(request: Request, data: SignalRequest):
+    """Generate a trading signal for a ticker"""
+    token = get_session_token(request)
+    if not verify_session(token):
+        raise HTTPException(status_code=401, detail="Not authenticated")
+
+    result = generate_signal(data.ticker, data.strategy_type, data.params or {})
+    if "error" in result:
+        raise HTTPException(status_code=400, detail=result["error"])
+    return {"signal": result}
+
+
+@app.get("/api/signals")
+async def list_signals(request: Request, tickers: Optional[str] = None, strategy_type: str = "momentum"):
+    """Generate signals for a list of tickers"""
+    token = get_session_token(request)
+    if not verify_session(token):
+        raise HTTPException(status_code=401, detail="Not authenticated")
+
+    tickers_list = [t.strip() for t in (tickers or "").split(",") if t.strip()]
+    if not tickers_list:
+        tickers_list = ["AAPL", "MSFT", "TSLA"]
+
+    results = []
+    for ticker in tickers_list:
+        signal = generate_signal(ticker, strategy_type, {})
+        if "error" not in signal:
+            results.append(signal)
+
+    return {"signals": results}
+
+
+@app.get("/api/data/sources")
+async def list_data_sources(request: Request):
+    """List available data sources"""
+    token = get_session_token(request)
+    if not verify_session(token):
+        raise HTTPException(status_code=401, detail="Not authenticated")
+
+    return {
+        "sources": [
+            {"id": "yfinance", "name": "Yahoo Finance", "coverage": "US Equities"},
+            {"id": "alpha_vantage", "name": "Alpha Vantage", "coverage": "Stocks/FX/Crypto"},
+        ]
+    }
+
+
+@app.post("/api/data/fetch")
+async def fetch_data_endpoint(request: Request, data: DataFetchRequest):
+    """Fetch historical data for a ticker"""
+    token = get_session_token(request)
+    if not verify_session(token):
+        raise HTTPException(status_code=401, detail="Not authenticated")
+
+    import yfinance as yf
+    stock = yf.Ticker(data.ticker)
+    df = stock.history(start=data.start_date, end=data.end_date, interval=data.interval)
+    if df.empty:
+        raise HTTPException(status_code=404, detail="No data available for the ticker")
+
+    records = []
+    for idx, row in df.iterrows():
+        records.append({
+            "date": idx.strftime("%Y-%m-%d"),
+            "open": float(row.get("Open", 0)),
+            "high": float(row.get("High", 0)),
+            "low": float(row.get("Low", 0)),
+            "close": float(row.get("Close", 0)),
+            "volume": float(row.get("Volume", 0)) if "Volume" in row else 0,
+        })
+
+    return {"ticker": data.ticker.upper(), "records": records}
+
+
 @app.get("/strategies", response_class=HTMLResponse)
 async def strategies_page(request: Request):
     """Serve the strategies page (protected)"""
@@ -2704,6 +2963,76 @@ async def strategies_page(request: Request):
             return HTMLResponse(content=f.read())
     
     # Return a basic strategies page if template not found
+    return HTMLResponse(content=get_strategies_html())
+
+
+@app.get("/strategy-library", response_class=HTMLResponse)
+async def strategy_library_page(request: Request):
+    """Serve the strategy library page (protected)"""
+    token = get_session_token(request)
+    if not verify_session(token):
+        return RedirectResponse(url="/login", status_code=302)
+
+    html_path = os.path.join(os.path.dirname(__file__), "templates", "strategy_library.html")
+    if os.path.exists(html_path):
+        with open(html_path, "r", encoding="utf-8") as f:
+            return HTMLResponse(content=f.read())
+    return HTMLResponse(content=get_strategies_html())
+
+
+@app.get("/strategy-editor", response_class=HTMLResponse)
+async def strategy_editor_page(request: Request):
+    """Serve the strategy editor page (protected)"""
+    token = get_session_token(request)
+    if not verify_session(token):
+        return RedirectResponse(url="/login", status_code=302)
+
+    html_path = os.path.join(os.path.dirname(__file__), "templates", "strategy_editor.html")
+    if os.path.exists(html_path):
+        with open(html_path, "r", encoding="utf-8") as f:
+            return HTMLResponse(content=f.read())
+    return HTMLResponse(content=get_strategies_html())
+
+
+@app.get("/reports", response_class=HTMLResponse)
+async def reports_page(request: Request):
+    """Serve the reports page (protected)"""
+    token = get_session_token(request)
+    if not verify_session(token):
+        return RedirectResponse(url="/login", status_code=302)
+
+    html_path = os.path.join(os.path.dirname(__file__), "templates", "reports.html")
+    if os.path.exists(html_path):
+        with open(html_path, "r", encoding="utf-8") as f:
+            return HTMLResponse(content=f.read())
+    return HTMLResponse(content=get_strategies_html())
+
+
+@app.get("/signals", response_class=HTMLResponse)
+async def signals_page(request: Request):
+    """Serve the signals page (protected)"""
+    token = get_session_token(request)
+    if not verify_session(token):
+        return RedirectResponse(url="/login", status_code=302)
+
+    html_path = os.path.join(os.path.dirname(__file__), "templates", "signals.html")
+    if os.path.exists(html_path):
+        with open(html_path, "r", encoding="utf-8") as f:
+            return HTMLResponse(content=f.read())
+    return HTMLResponse(content=get_strategies_html())
+
+
+@app.get("/data-hub", response_class=HTMLResponse)
+async def data_hub_page(request: Request):
+    """Serve the data hub page (protected)"""
+    token = get_session_token(request)
+    if not verify_session(token):
+        return RedirectResponse(url="/login", status_code=302)
+
+    html_path = os.path.join(os.path.dirname(__file__), "templates", "data_hub.html")
+    if os.path.exists(html_path):
+        with open(html_path, "r", encoding="utf-8") as f:
+            return HTMLResponse(content=f.read())
     return HTMLResponse(content=get_strategies_html())
 
 

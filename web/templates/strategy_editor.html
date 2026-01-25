@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>策略编辑器 - TradingAgents</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+</head>
+<body class="bg-slate-900 text-white min-h-screen">
+    <nav class="bg-gray-900/90 backdrop-blur-sm border-b border-gray-700 p-4">
+        <div class="max-w-7xl mx-auto flex items-center justify-between">
+            <div class="flex items-center gap-4">
+                <a href="/dashboard" class="text-blue-400 hover:text-blue-300">首页</a>
+                <a href="/strategy-library" class="text-gray-300 hover:text-white">策略库</a>
+                <a href="/strategies" class="text-gray-300 hover:text-white">回测</a>
+                <a href="/reports" class="text-gray-300 hover:text-white">报告</a>
+                <a href="/signals" class="text-gray-300 hover:text-white">信号</a>
+                <a href="/data-hub" class="text-gray-300 hover:text-white">数据</a>
+            </div>
+            <a href="/logout" class="text-gray-400 hover:text-white">退出</a>
+        </div>
+    </nav>
+
+    <div class="max-w-5xl mx-auto p-6 space-y-6">
+        <header>
+            <h1 class="text-3xl font-bold">自定义策略编辑器</h1>
+            <p class="text-gray-400">通过选择基础策略与参数组合生成自定义策略。</p>
+        </header>
+
+        <section class="bg-gray-800/60 border border-gray-700 rounded-xl p-6 space-y-4">
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                    <label class="block text-sm text-gray-300 mb-2">策略名称</label>
+                    <input id="strategyName" class="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2" />
+                </div>
+                <div>
+                    <label class="block text-sm text-gray-300 mb-2">策略分类</label>
+                    <input id="strategyCategory" class="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2" placeholder="technical / fundamental / quantitative" />
+                </div>
+            </div>
+
+            <div>
+                <label class="block text-sm text-gray-300 mb-2">策略描述</label>
+                <textarea id="strategyDescription" class="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2" rows="3"></textarea>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                    <label class="block text-sm text-gray-300 mb-2">基础策略</label>
+                    <select id="baseStrategy" class="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2">
+                        <option value="moving_average_crossover">均线趋势</option>
+                        <option value="rsi">RSI 反转</option>
+                        <option value="macd">MACD 交叉</option>
+                        <option value="bollinger_bands">布林带突破</option>
+                        <option value="momentum">动量</option>
+                        <option value="mean_reversion">均值回归</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-sm text-gray-300 mb-2">公开策略</label>
+                    <select id="isPublic" class="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2">
+                        <option value="false">仅自己可见</option>
+                        <option value="true">公开</option>
+                    </select>
+                </div>
+            </div>
+
+            <div>
+                <label class="block text-sm text-gray-300 mb-2">参数 (JSON)</label>
+                <textarea id="strategyParams" class="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2" rows="4">{}</textarea>
+            </div>
+
+            <div>
+                <label class="block text-sm text-gray-300 mb-2">策略代码（可选，仅说明用途）</label>
+                <textarea id="strategyCode" class="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2" rows="4"></textarea>
+            </div>
+
+            <div class="flex items-center gap-3">
+                <button id="createButton" class="px-4 py-2 bg-blue-600 rounded-lg">创建策略</button>
+                <span id="message" class="text-sm text-gray-400"></span>
+            </div>
+        </section>
+
+        <section class="bg-gray-800/60 border border-gray-700 rounded-xl p-6 space-y-2 text-sm text-gray-300">
+            <h2 class="text-lg font-semibold">如何分析结果</h2>
+            <p>关注年化收益、最大回撤、胜率与收益波动，回撤越低代表风险控制越好。</p>
+            <p>若策略的收益主要来自少数交易，请检查利润因子与平均盈亏比。</p>
+            <p>自定义策略基于基础策略参数进行扩展，可先在回测页验证表现。</p>
+        </section>
+    </div>
+
+    <script>
+        document.getElementById("createButton").addEventListener("click", async () => {
+            const name = document.getElementById("strategyName").value.trim();
+            const category = document.getElementById("strategyCategory").value.trim();
+            const description = document.getElementById("strategyDescription").value.trim();
+            const baseStrategy = document.getElementById("baseStrategy").value;
+            const isPublic = document.getElementById("isPublic").value === "true";
+            const code = document.getElementById("strategyCode").value.trim();
+
+            let params = {};
+            try {
+                params = JSON.parse(document.getElementById("strategyParams").value || "{}");
+            } catch (err) {
+                document.getElementById("message").textContent = "参数 JSON 格式错误";
+                return;
+            }
+
+            const payload = {
+                name,
+                description,
+                strategy_type: "custom",
+                category,
+                default_params: { base_strategy: baseStrategy, ...params },
+                strategy_code: code || null,
+                is_public: isPublic
+            };
+
+            const res = await fetch("/api/strategies/create", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(payload)
+            });
+
+            const data = await res.json();
+            document.getElementById("message").textContent = res.ok ? "策略创建成功" : (data.detail || "创建失败");
+        });
+    </script>
+</body>
+</html>

@@ -6,7 +6,7 @@ Implements various trading strategies and runs backtests on historical data
 import pandas as pd
 import numpy as np
 from datetime import datetime, timedelta
-from typing import Dict, List, Tuple, Optional
+from typing import Dict, List, Tuple, Optional, Callable, Any
 import yfinance as yf
 
 
@@ -41,6 +41,22 @@ def calculate_technical_indicators(df: pd.DataFrame) -> pd.DataFrame:
     df['Momentum'] = df['Close'].pct_change(periods=20)
     
     return df
+
+
+def ensure_moving_average(df: pd.DataFrame, period: int) -> str:
+    """Ensure a moving average column exists and return its name."""
+    column = f"MA_{period}"
+    if column not in df.columns:
+        df[column] = df["Close"].rolling(window=period).mean()
+    return column
+
+
+def apply_default_params(params: Optional[Dict], defaults: Dict[str, Any]) -> Dict[str, Any]:
+    """Merge provided params with defaults."""
+    merged = dict(defaults)
+    if params:
+        merged.update(params)
+    return merged
 
 
 def run_moving_average_crossover(
@@ -159,9 +175,10 @@ def run_mean_reversion_strategy(
 ) -> Dict:
     """Mean Reversion Strategy"""
     df = calculate_technical_indicators(df.copy())
-    
+
+    ma_column = ensure_moving_average(df, ma_period)
     # Calculate deviation from moving average
-    df['Deviation'] = (df['Close'] - df['MA_20']) / df['MA_20']
+    df['Deviation'] = (df['Close'] - df[ma_column]) / df[ma_column]
     
     # Generate signals
     df['Signal'] = 0
@@ -172,6 +189,69 @@ def run_mean_reversion_strategy(
     df['Position'] = df['Signal'].diff()
     
     return run_backtest(df, initial_capital, commission)
+
+
+def run_custom_strategy(
+    df: pd.DataFrame,
+    initial_capital: float = 100000,
+    base_strategy: str = "moving_average_crossover",
+    commission: float = 0.001,
+    **params: Any
+) -> Dict:
+    """Custom strategy wrapper that reuses a base strategy."""
+    resolved_type = STRATEGY_ALIASES.get(base_strategy, base_strategy)
+    strategy = STRATEGY_REGISTRY.get(resolved_type)
+    if not strategy:
+        raise ValueError(f"Unknown base strategy: {base_strategy}")
+
+    merged_params = apply_default_params(params, strategy["defaults"])
+    handler: Callable[..., Dict] = strategy["handler"]
+    return handler(df, initial_capital, commission=commission, **merged_params)
+
+
+STRATEGY_REGISTRY: Dict[str, Dict[str, Any]] = {
+    "moving_average_crossover": {
+        "handler": run_moving_average_crossover,
+        "defaults": {"short_window": 20, "long_window": 50},
+    },
+    "rsi": {
+        "handler": run_rsi_strategy,
+        "defaults": {"rsi_period": 14, "oversold": 30, "overbought": 70},
+    },
+    "macd": {
+        "handler": run_macd_strategy,
+        "defaults": {"fast_period": 12, "slow_period": 26, "signal_period": 9},
+    },
+    "bollinger_bands": {
+        "handler": run_bollinger_bands_strategy,
+        "defaults": {"period": 20, "std_dev": 2},
+    },
+    "momentum": {
+        "handler": run_momentum_strategy,
+        "defaults": {"lookback_period": 20, "momentum_threshold": 0.05},
+    },
+    "mean_reversion": {
+        "handler": run_mean_reversion_strategy,
+        "defaults": {"ma_period": 20, "deviation_threshold": 0.02},
+    },
+    "value": {
+        "handler": run_mean_reversion_strategy,
+        "defaults": {"ma_period": 50, "deviation_threshold": 0.03},
+    },
+    "growth": {
+        "handler": run_momentum_strategy,
+        "defaults": {"lookback_period": 20, "momentum_threshold": 0.05},
+    },
+    "custom": {
+        "handler": run_custom_strategy,
+        "defaults": {"base_strategy": "moving_average_crossover"},
+    },
+}
+
+STRATEGY_ALIASES: Dict[str, str] = {
+    "trend_following": "moving_average_crossover",
+    "breakout": "bollinger_bands",
+}
 
 
 def run_backtest(df: pd.DataFrame, initial_capital: float, commission: float = 0.001) -> Dict:
@@ -321,52 +401,14 @@ def run_strategy_backtest(
             raise ValueError("Historical data missing 'Close' column")
         
         # Run strategy
-        if strategy_type == "moving_average_crossover" or strategy_type == "trend_following":
-            params = params or {}
-            return run_moving_average_crossover(
-                df, initial_capital,
-                short_window=params.get('short_window', 20),
-                long_window=params.get('long_window', 50)
-            )
-        elif strategy_type == "rsi" or strategy_type == "mean_reversion":
-            params = params or {}
-            return run_rsi_strategy(
-                df, initial_capital,
-                rsi_period=params.get('rsi_period', 14),
-                oversold=params.get('oversold', 30),
-                overbought=params.get('overbought', 70)
-            )
-        elif strategy_type == "macd":
-            params = params or {}
-            return run_macd_strategy(
-                df, initial_capital,
-                fast_period=params.get('fast_period', 12),
-                slow_period=params.get('slow_period', 26),
-                signal_period=params.get('signal_period', 9)
-            )
-        elif strategy_type == "bollinger_bands" or strategy_type == "breakout":
-            params = params or {}
-            return run_bollinger_bands_strategy(
-                df, initial_capital,
-                period=params.get('period', 20),
-                std_dev=params.get('std_dev', 2)
-            )
-        elif strategy_type == "momentum":
-            params = params or {}
-            return run_momentum_strategy(
-                df, initial_capital,
-                lookback_period=params.get('lookback_period', 20),
-                momentum_threshold=params.get('momentum_threshold', 0.05)
-            )
-        elif strategy_type == "mean_reversion":
-            params = params or {}
-            return run_mean_reversion_strategy(
-                df, initial_capital,
-                ma_period=params.get('ma_period', 20),
-                deviation_threshold=params.get('deviation_threshold', 0.02)
-            )
-        else:
+        resolved_type = STRATEGY_ALIASES.get(strategy_type, strategy_type)
+        strategy = STRATEGY_REGISTRY.get(resolved_type)
+        if not strategy:
             raise ValueError(f"Unknown strategy type: {strategy_type}")
+
+        merged_params = apply_default_params(params, strategy["defaults"])
+        handler: Callable[..., Dict] = strategy["handler"]
+        return handler(df, initial_capital, **merged_params)
             
     except Exception as e:
         return {

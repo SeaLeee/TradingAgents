@@ -1229,6 +1229,7 @@ class Strategy(Base):
             "strategy_type": self.strategy_type,
             "category": self.category,
             "default_params": json.loads(self.default_params) if self.default_params else {},
+            "strategy_code": self.strategy_code,
             "best_sharpe_ratio": float(self.best_sharpe_ratio) if self.best_sharpe_ratio else None,
             "best_total_return": float(self.best_total_return) if self.best_total_return else None,
             "best_max_drawdown": float(self.best_max_drawdown) if self.best_max_drawdown else None,
@@ -1332,6 +1333,7 @@ def create_strategy(
     strategy_type: str,
     category: str = None,
     default_params: dict = None,
+    strategy_code: str = None,
     user_id: int = None,
     is_public: bool = True
 ) -> Strategy:
@@ -1344,10 +1346,48 @@ def create_strategy(
         strategy_type=strategy_type,
         category=category,
         default_params=json.dumps(default_params) if default_params else None,
+        strategy_code=strategy_code,
         is_public=is_public,
         is_active=True
     )
     db.add(strategy)
+    db.commit()
+    db.refresh(strategy)
+    return strategy
+
+
+def update_strategy(
+    db,
+    strategy: Strategy,
+    name: Optional[str] = None,
+    description: Optional[str] = None,
+    strategy_type: Optional[str] = None,
+    category: Optional[str] = None,
+    default_params: Optional[dict] = None,
+    strategy_code: Optional[str] = None,
+    is_public: Optional[bool] = None,
+    is_active: Optional[bool] = None
+) -> Strategy:
+    """Update an existing strategy."""
+    import json
+    if name is not None:
+        strategy.name = name
+    if description is not None:
+        strategy.description = description
+    if strategy_type is not None:
+        strategy.strategy_type = strategy_type
+    if category is not None:
+        strategy.category = category
+    if default_params is not None:
+        strategy.default_params = json.dumps(default_params)
+    if strategy_code is not None:
+        strategy.strategy_code = strategy_code
+    if is_public is not None:
+        strategy.is_public = is_public
+    if is_active is not None:
+        strategy.is_active = is_active
+
+    strategy.updated_at = datetime.utcnow()
     db.commit()
     db.refresh(strategy)
     return strategy
@@ -1530,6 +1570,41 @@ def init_default_strategies(db):
             "strategy_type": "growth",
             "category": "fundamental",
             "default_params": {"min_revenue_growth": 0.2, "min_earnings_growth": 0.15}
+        },
+        {
+            "name": "低波动防御策略",
+            "description": "偏好波动率较低的标的，使用更温和的均值回归参数。",
+            "strategy_type": "custom",
+            "category": "risk",
+            "default_params": {"base_strategy": "mean_reversion", "ma_period": 60, "deviation_threshold": 0.015}
+        },
+        {
+            "name": "趋势强化 (长短均线)",
+            "description": "延长均线周期以过滤噪音，捕捉更稳定的趋势。",
+            "strategy_type": "trend_following",
+            "category": "technical",
+            "default_params": {"short_window": 30, "long_window": 120}
+        },
+        {
+            "name": "波动率突破加强版",
+            "description": "使用更严格的布林带参数，减少震荡期误触发。",
+            "strategy_type": "breakout",
+            "category": "technical",
+            "default_params": {"period": 30, "std_dev": 2.5}
+        },
+        {
+            "name": "动量轮动策略",
+            "description": "关注中期动量强度，适合趋势中后段的轮动机会。",
+            "strategy_type": "custom",
+            "category": "quantitative",
+            "default_params": {"base_strategy": "momentum", "lookback_period": 60, "momentum_threshold": 0.08}
+        },
+        {
+            "name": "反转捕捉策略",
+            "description": "在动量快速衰减时转向均值回归，偏向反转交易。",
+            "strategy_type": "custom",
+            "category": "quantitative",
+            "default_params": {"base_strategy": "mean_reversion", "ma_period": 15, "deviation_threshold": 0.025}
         }
     ]
     

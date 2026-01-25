@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>信号中心 - TradingAgents</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+</head>
+<body class="bg-slate-900 text-white min-h-screen">
+    <nav class="bg-gray-900/90 backdrop-blur-sm border-b border-gray-700 p-4">
+        <div class="max-w-7xl mx-auto flex items-center justify-between">
+            <div class="flex items-center gap-4">
+                <a href="/dashboard" class="text-blue-400 hover:text-blue-300">首页</a>
+                <a href="/strategies" class="text-gray-300 hover:text-white">回测</a>
+                <a href="/strategy-library" class="text-gray-300 hover:text-white">策略库</a>
+                <a href="/reports" class="text-gray-300 hover:text-white">报告</a>
+                <a href="/data-hub" class="text-gray-300 hover:text-white">数据</a>
+            </div>
+            <a href="/logout" class="text-gray-400 hover:text-white">退出</a>
+        </div>
+    </nav>
+
+    <div class="max-w-6xl mx-auto p-6 space-y-6">
+        <header>
+            <h1 class="text-3xl font-bold">信号中心</h1>
+            <p class="text-gray-400">输入标的与策略类型，生成最新交易信号。</p>
+        </header>
+
+        <section class="bg-gray-800/60 border border-gray-700 rounded-xl p-6 space-y-4">
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div>
+                    <label class="block text-sm text-gray-300 mb-2">标的列表 (逗号分隔)</label>
+                    <input id="tickersInput" class="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2" value="AAPL,MSFT,TSLA" />
+                </div>
+                <div>
+                    <label class="block text-sm text-gray-300 mb-2">策略类型</label>
+                    <select id="signalStrategy" class="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2">
+                        <option value="momentum">动量</option>
+                        <option value="moving_average_crossover">均线趋势</option>
+                        <option value="rsi">RSI 反转</option>
+                        <option value="macd">MACD</option>
+                        <option value="bollinger_bands">布林带突破</option>
+                    </select>
+                </div>
+                <div class="flex items-end">
+                    <button id="generateBtn" class="px-4 py-2 bg-blue-600 rounded-lg w-full">生成信号</button>
+                </div>
+            </div>
+        </section>
+
+        <section class="bg-gray-800/60 border border-gray-700 rounded-xl p-6">
+            <table class="w-full text-sm">
+                <thead>
+                    <tr class="text-gray-400 border-b border-gray-700">
+                        <th class="text-left py-2">标的</th>
+                        <th class="text-left py-2">信号</th>
+                        <th class="text-left py-2">原因</th>
+                        <th class="text-left py-2">最新价格</th>
+                        <th class="text-left py-2">时间</th>
+                    </tr>
+                </thead>
+                <tbody id="signalsBody"></tbody>
+            </table>
+        </section>
+
+        <section class="bg-gray-800/60 border border-gray-700 rounded-xl p-6 text-sm text-gray-300">
+            <h2 class="text-lg font-semibold mb-2">信号解读</h2>
+            <p>信号只是策略规则的结果，需要结合趋势强度、资金管理和风险控制做决策。</p>
+            <p>建议结合回测结果设置入场阈值与止损/止盈。</p>
+        </section>
+    </div>
+
+    <script>
+        async function loadSignals() {
+            const tickers = document.getElementById("tickersInput").value;
+            const strategyType = document.getElementById("signalStrategy").value;
+            const res = await fetch(`/api/signals?tickers=${encodeURIComponent(tickers)}&strategy_type=${strategyType}`);
+            const data = await res.json();
+            const body = document.getElementById("signalsBody");
+            body.innerHTML = "";
+            data.signals.forEach(signal => {
+                body.innerHTML += `
+                    <tr class="border-b border-gray-800">
+                        <td class="py-2">${signal.ticker}</td>
+                        <td class="py-2">${signal.signal}</td>
+                        <td class="py-2">${signal.reason}</td>
+                        <td class="py-2">${signal.latest_price.toFixed(2)}</td>
+                        <td class="py-2">${signal.timestamp}</td>
+                    </tr>
+                `;
+            });
+        }
+
+        document.getElementById("generateBtn").addEventListener("click", loadSignals);
+        loadSignals();
+    </script>
+</body>
+</html>

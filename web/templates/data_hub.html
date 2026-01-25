@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>数据中心 - TradingAgents</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body class="bg-slate-900 text-white min-h-screen">
+    <nav class="bg-gray-900/90 backdrop-blur-sm border-b border-gray-700 p-4">
+        <div class="max-w-7xl mx-auto flex items-center justify-between">
+            <div class="flex items-center gap-4">
+                <a href="/dashboard" class="text-blue-400 hover:text-blue-300">首页</a>
+                <a href="/strategies" class="text-gray-300 hover:text-white">回测</a>
+                <a href="/strategy-library" class="text-gray-300 hover:text-white">策略库</a>
+                <a href="/reports" class="text-gray-300 hover:text-white">报告</a>
+                <a href="/signals" class="text-gray-300 hover:text-white">信号</a>
+            </div>
+            <a href="/logout" class="text-gray-400 hover:text-white">退出</a>
+        </div>
+    </nav>
+
+    <div class="max-w-6xl mx-auto p-6 space-y-6">
+        <header>
+            <h1 class="text-3xl font-bold">数据中心</h1>
+            <p class="text-gray-400">查看数据源与历史数据，支持快速预览。</p>
+        </header>
+
+        <section class="bg-gray-800/60 border border-gray-700 rounded-xl p-6">
+            <h2 class="text-lg font-semibold mb-2">数据源</h2>
+            <ul id="sourcesList" class="text-gray-300 text-sm"></ul>
+        </section>
+
+        <section class="bg-gray-800/60 border border-gray-700 rounded-xl p-6 space-y-4">
+            <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+                <div>
+                    <label class="block text-sm text-gray-300 mb-2">标的</label>
+                    <input id="dataTicker" class="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2" value="AAPL" />
+                </div>
+                <div>
+                    <label class="block text-sm text-gray-300 mb-2">开始日期</label>
+                    <input id="dataStart" type="date" class="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2" />
+                </div>
+                <div>
+                    <label class="block text-sm text-gray-300 mb-2">结束日期</label>
+                    <input id="dataEnd" type="date" class="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2" />
+                </div>
+                <div class="flex items-end">
+                    <button id="fetchBtn" class="px-4 py-2 bg-blue-600 rounded-lg w-full">获取数据</button>
+                </div>
+            </div>
+            <canvas id="dataChart" height="120"></canvas>
+        </section>
+
+        <section class="bg-gray-800/60 border border-gray-700 rounded-xl p-6">
+            <table class="w-full text-sm">
+                <thead>
+                    <tr class="text-gray-400 border-b border-gray-700">
+                        <th class="text-left py-2">日期</th>
+                        <th class="text-left py-2">开盘</th>
+                        <th class="text-left py-2">最高</th>
+                        <th class="text-left py-2">最低</th>
+                        <th class="text-left py-2">收盘</th>
+                    </tr>
+                </thead>
+                <tbody id="dataTable"></tbody>
+            </table>
+        </section>
+    </div>
+
+    <script>
+        let dataChart;
+
+        async function loadSources() {
+            const res = await fetch("/api/data/sources");
+            const data = await res.json();
+            const list = document.getElementById("sourcesList");
+            list.innerHTML = data.sources.map(s => `<li>${s.name} - ${s.coverage}</li>`).join("");
+        }
+
+        async function fetchData() {
+            const payload = {
+                ticker: document.getElementById("dataTicker").value.trim(),
+                start_date: document.getElementById("dataStart").value || null,
+                end_date: document.getElementById("dataEnd").value || null
+            };
+
+            const res = await fetch("/api/data/fetch", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(payload)
+            });
+            const data = await res.json();
+            const records = data.records || [];
+
+            const table = document.getElementById("dataTable");
+            table.innerHTML = records.slice(-20).map(r => `
+                <tr class="border-b border-gray-800">
+                    <td class="py-2">${r.date}</td>
+                    <td class="py-2">${r.open.toFixed(2)}</td>
+                    <td class="py-2">${r.high.toFixed(2)}</td>
+                    <td class="py-2">${r.low.toFixed(2)}</td>
+                    <td class="py-2">${r.close.toFixed(2)}</td>
+                </tr>
+            `).join("");
+
+            const labels = records.map(r => r.date);
+            const close = records.map(r => r.close);
+            if (dataChart) dataChart.destroy();
+            dataChart = new Chart(document.getElementById("dataChart"), {
+                type: "line",
+                data: {
+                    labels,
+                    datasets: [{ label: "收盘价", data: close, borderColor: "#3b82f6", fill: false }]
+                }
+            });
+        }
+
+        document.getElementById("fetchBtn").addEventListener("click", fetchData);
+        loadSources();
+    </script>
+</body>
+</html>
