@@ -199,12 +199,13 @@ def run_custom_strategy(
     **params: Any
 ) -> Dict:
     """Custom strategy wrapper that reuses a base strategy."""
-    if not base_strategy:
-        base_strategy = "moving_average_crossover"
-    resolved_type = STRATEGY_ALIASES.get(base_strategy, base_strategy)
+    # 从 params 中提取 base_strategy（如果存在），否则使用参数默认值
+    actual_base = params.pop("base_strategy", None) or base_strategy or "moving_average_crossover"
+    
+    resolved_type = STRATEGY_ALIASES.get(actual_base, actual_base)
     strategy = STRATEGY_REGISTRY.get(resolved_type)
     if not strategy:
-        raise ValueError(f"Unknown base strategy: {base_strategy}")
+        raise ValueError(f"Unknown base strategy: {actual_base}")
 
     merged_params = apply_default_params(params, strategy["defaults"])
     handler: Callable[..., Dict] = strategy["handler"]

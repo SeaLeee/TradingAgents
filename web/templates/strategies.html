@@ -236,13 +236,172 @@
                         </div>
                         ` : ''}
                         
-                        <button onclick="openBacktestModal(${strategy.id})" 
-                            class="w-full bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700 px-4 py-2 rounded-lg font-semibold transition-all">
-                            <i class="fas fa-chart-line mr-2"></i>运行回测
-                        </button>
+                        <div class="flex gap-2">
+                            <button onclick="openStrategyGuide('${strategy.strategy_type}', '${strategy.name}')" 
+                                class="flex-1 bg-gray-700 hover:bg-gray-600 px-3 py-2 rounded-lg font-semibold transition-all text-sm">
+                                <i class="fas fa-book mr-1"></i>策略教程
+                            </button>
+                            <button onclick="openBacktestModal(${strategy.id})" 
+                                class="flex-1 bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700 px-3 py-2 rounded-lg font-semibold transition-all text-sm">
+                                <i class="fas fa-play mr-1"></i>运行回测
+                            </button>
+                        </div>
                     </div>
                 `;
             }).join('');
+        }
+        
+        // 策略教程数据
+        const strategyGuides = {
+            'trend_following': {
+                title: '趋势跟踪策略',
+                icon: 'fa-arrow-trend-up',
+                color: 'blue',
+                principle: '趋势跟踪策略基于"趋势一旦形成便会持续"的市场假设。通过识别价格趋势方向，在趋势确立时入场，在趋势反转时出场。',
+                mechanism: '<div class="space-y-3"><div class="flex items-center gap-3"><div class="w-8 h-8 bg-blue-600 rounded-full flex items-center justify-center text-sm font-bold">1</div><div>计算短期均线（如20日）和长期均线（如50日）</div></div><div class="flex items-center gap-3"><div class="w-8 h-8 bg-blue-600 rounded-full flex items-center justify-center text-sm font-bold">2</div><div>当短期均线上穿长期均线时产生买入信号（金叉）</div></div><div class="flex items-center gap-3"><div class="w-8 h-8 bg-blue-600 rounded-full flex items-center justify-center text-sm font-bold">3</div><div>当短期均线下穿长期均线时产生卖出信号（死叉）</div></div></div>',
+                diagram: '<div class="bg-gray-800 rounded-lg p-4 text-center"><div class="text-gray-400 mb-2">均线交叉示意</div><div class="flex items-end justify-center gap-1 h-32"><div class="w-2 bg-blue-500 rounded-t" style="height:40%"></div><div class="w-2 bg-blue-500 rounded-t" style="height:50%"></div><div class="w-2 bg-blue-500 rounded-t" style="height:45%"></div><div class="w-2 bg-green-500 rounded-t" style="height:60%"></div><div class="w-2 bg-green-500 rounded-t" style="height:75%"></div><div class="w-2 bg-green-500 rounded-t" style="height:85%"></div><div class="w-2 bg-green-500 rounded-t" style="height:90%"></div><div class="w-2 bg-yellow-500 rounded-t" style="height:80%"></div><div class="w-2 bg-red-500 rounded-t" style="height:65%"></div></div><div class="flex justify-center gap-4 mt-2 text-xs"><span class="text-blue-400">▬ 短期均线</span><span class="text-green-400">▲ 买入点</span><span class="text-red-400">▼ 卖出点</span></div></div>',
+                suitable: '单边趋势行情、牛市或熊市初中期',
+                unsuitable: '震荡盘整行情、趋势不明确时期',
+                tips: ['延长均线周期可减少假信号但会滞后', '结合成交量确认趋势更可靠', '设置止损保护防止趋势反转损失过大']
+            },
+            'mean_reversion': {
+                title: '均值回归策略',
+                icon: 'fa-exchange-alt',
+                color: 'purple',
+                principle: '均值回归策略基于价格围绕均值波动的统计特性。当价格偏离均值过远时，预期价格将回归均值，从而产生交易机会。',
+                mechanism: '<div class="space-y-3"><div class="flex items-center gap-3"><div class="w-8 h-8 bg-purple-600 rounded-full flex items-center justify-center text-sm font-bold">1</div><div>计算移动平均线作为"均值"基准</div></div><div class="flex items-center gap-3"><div class="w-8 h-8 bg-purple-600 rounded-full flex items-center justify-center text-sm font-bold">2</div><div>当价格低于均值一定幅度时买入（超卖）</div></div><div class="flex items-center gap-3"><div class="w-8 h-8 bg-purple-600 rounded-full flex items-center justify-center text-sm font-bold">3</div><div>当价格高于均值一定幅度时卖出（超买）</div></div></div>',
+                diagram: '<div class="bg-gray-800 rounded-lg p-4 text-center"><div class="text-gray-400 mb-2">均值回归示意</div><div class="relative h-32 flex items-center"><div class="absolute w-full h-0.5 bg-yellow-500 top-1/2"></div><div class="absolute w-full border-t border-dashed border-green-500 top-1/4"></div><div class="absolute w-full border-t border-dashed border-red-500 top-3/4"></div><div class="flex items-center justify-center gap-1 h-full relative z-10"><div class="w-2 bg-gray-500 rounded" style="height:50%"></div><div class="w-2 bg-gray-500 rounded" style="height:35%"></div><div class="w-2 bg-green-500 rounded" style="height:25%"></div><div class="w-2 bg-gray-500 rounded" style="height:40%"></div><div class="w-2 bg-gray-500 rounded" style="height:55%"></div><div class="w-2 bg-gray-500 rounded" style="height:70%"></div><div class="w-2 bg-red-500 rounded" style="height:80%"></div><div class="w-2 bg-gray-500 rounded" style="height:60%"></div></div></div><div class="flex justify-center gap-4 mt-2 text-xs"><span class="text-yellow-400">▬ 均值</span><span class="text-green-400">买入区</span><span class="text-red-400">卖出区</span></div></div>',
+                suitable: '震荡盘整行情、区间波动市场',
+                unsuitable: '单边趋势行情、突破性行情',
+                tips: ['设置合理的偏离阈值避免过早入场', '配合RSI等超买超卖指标效果更佳', '在强趋势中需要严格止损']
+            },
+            'momentum': {
+                title: '动量策略',
+                icon: 'fa-rocket',
+                color: 'orange',
+                principle: '动量策略基于"强者恒强"的市场规律。买入近期表现强势的资产，卖出表现弱势的资产，追踪价格动量延续。',
+                mechanism: '<div class="space-y-3"><div class="flex items-center gap-3"><div class="w-8 h-8 bg-orange-600 rounded-full flex items-center justify-center text-sm font-bold">1</div><div>计算过去N日的价格变化率（动量值）</div></div><div class="flex items-center gap-3"><div class="w-8 h-8 bg-orange-600 rounded-full flex items-center justify-center text-sm font-bold">2</div><div>当动量值超过正阈值时买入（强势）</div></div><div class="flex items-center gap-3"><div class="w-8 h-8 bg-orange-600 rounded-full flex items-center justify-center text-sm font-bold">3</div><div>当动量值低于负阈值时卖出（弱势）</div></div></div>',
+                diagram: '<div class="bg-gray-800 rounded-lg p-4 text-center"><div class="text-gray-400 mb-2">动量变化示意</div><div class="flex items-end justify-center gap-1 h-32"><div class="w-3 bg-red-500 rounded-t" style="height:20%"></div><div class="w-3 bg-red-400 rounded-t" style="height:30%"></div><div class="w-3 bg-yellow-500 rounded-t" style="height:45%"></div><div class="w-3 bg-green-400 rounded-t" style="height:60%"></div><div class="w-3 bg-green-500 rounded-t" style="height:80%"></div><div class="w-3 bg-green-600 rounded-t" style="height:95%"></div><div class="w-3 bg-green-500 rounded-t" style="height:85%"></div><div class="w-3 bg-yellow-500 rounded-t" style="height:50%"></div></div><div class="text-xs mt-2 text-gray-400">动量由负转正 → 买入信号 | 动量由正转负 → 卖出信号</div></div>',
+                suitable: '趋势启动阶段、市场情绪高涨时期',
+                unsuitable: '趋势末期、市场转折点附近',
+                tips: ['动量策略在趋势中后期可能遭遇反转', '结合趋势过滤器避免震荡市假信号', '适当缩短回看周期可提高灵敏度']
+            },
+            'breakout': {
+                title: '突破策略',
+                icon: 'fa-bolt',
+                color: 'yellow',
+                principle: '突破策略捕捉价格突破关键支撑/阻力位后的延续行情。利用布林带等技术指标识别价格波动区间和突破点。',
+                mechanism: '<div class="space-y-3"><div class="flex items-center gap-3"><div class="w-8 h-8 bg-yellow-600 rounded-full flex items-center justify-center text-sm font-bold">1</div><div>计算布林带上轨、中轨和下轨</div></div><div class="flex items-center gap-3"><div class="w-8 h-8 bg-yellow-600 rounded-full flex items-center justify-center text-sm font-bold">2</div><div>价格突破上轨时买入（向上突破）</div></div><div class="flex items-center gap-3"><div class="w-8 h-8 bg-yellow-600 rounded-full flex items-center justify-center text-sm font-bold">3</div><div>价格跌破下轨时卖出（向下突破）</div></div></div>',
+                diagram: '<div class="bg-gray-800 rounded-lg p-4 text-center"><div class="text-gray-400 mb-2">布林带突破示意</div><div class="relative h-32"><div class="absolute w-full h-full flex items-center"><div class="w-full h-16 bg-gray-700/50 rounded border border-gray-600"></div></div><div class="flex items-center justify-center gap-1 h-full relative z-10"><div class="w-2 bg-gray-500 rounded" style="height:40%"></div><div class="w-2 bg-gray-500 rounded" style="height:45%"></div><div class="w-2 bg-gray-500 rounded" style="height:50%"></div><div class="w-2 bg-green-500 rounded" style="height:75%"></div><div class="w-2 bg-green-400 rounded" style="height:85%"></div><div class="w-2 bg-green-500 rounded" style="height:80%"></div><div class="w-2 bg-gray-500 rounded" style="height:55%"></div><div class="w-2 bg-red-500 rounded" style="height:25%"></div></div></div><div class="flex justify-center gap-4 mt-2 text-xs"><span class="text-gray-400">▬ 布林带区间</span><span class="text-green-400">▲ 上突破买入</span><span class="text-red-400">▼ 下突破卖出</span></div></div>',
+                suitable: '波动收窄后的突破行情、重大事件驱动',
+                unsuitable: '假突破频繁的震荡市、流动性差的市场',
+                tips: ['配合成交量放大确认突破有效性', '设置止损在突破位附近防止假突破', '波动率收窄期间突破信号更可靠']
+            },
+            'value': {
+                title: '价值投资策略',
+                icon: 'fa-gem',
+                color: 'emerald',
+                principle: '价值投资策略寻找被市场低估的资产。当价格显著低于内在价值时买入，等待市场纠正估值偏差获取收益。',
+                mechanism: '<div class="space-y-3"><div class="flex items-center gap-3"><div class="w-8 h-8 bg-emerald-600 rounded-full flex items-center justify-center text-sm font-bold">1</div><div>使用长期均线（如50日）作为价值参考</div></div><div class="flex items-center gap-3"><div class="w-8 h-8 bg-emerald-600 rounded-full flex items-center justify-center text-sm font-bold">2</div><div>当价格大幅低于均线时视为低估买入</div></div><div class="flex items-center gap-3"><div class="w-8 h-8 bg-emerald-600 rounded-full flex items-center justify-center text-sm font-bold">3</div><div>当价格回归或高于均线时考虑卖出</div></div></div>',
+                diagram: '<div class="bg-gray-800 rounded-lg p-4 text-center"><div class="text-gray-400 mb-2">价值区间示意</div><div class="relative h-32 flex flex-col justify-center"><div class="h-8 bg-red-900/30 border-b border-red-500 flex items-center px-2 text-xs text-red-400">高估区域</div><div class="h-8 bg-yellow-900/30 border-b border-yellow-500 flex items-center px-2 text-xs text-yellow-400">合理估值</div><div class="h-8 bg-green-900/30 flex items-center px-2 text-xs text-green-400">低估区域 → 买入机会</div></div></div>',
+                suitable: '市场恐慌性下跌、优质资产被错杀时期',
+                unsuitable: '泡沫期、基本面恶化的标的',
+                tips: ['需要较长持有周期等待价值回归', '结合基本面分析提高准确性', '分批建仓降低抄底风险']
+            },
+            'growth': {
+                title: '成长股策略',
+                icon: 'fa-seedling',
+                color: 'teal',
+                principle: '成长股策略追踪高增长潜力的资产。通过识别强势动量和持续上涨趋势，投资于成长性突出的标的。',
+                mechanism: '<div class="space-y-3"><div class="flex items-center gap-3"><div class="w-8 h-8 bg-teal-600 rounded-full flex items-center justify-center text-sm font-bold">1</div><div>计算中期动量指标识别成长趋势</div></div><div class="flex items-center gap-3"><div class="w-8 h-8 bg-teal-600 rounded-full flex items-center justify-center text-sm font-bold">2</div><div>当动量持续为正且超过阈值时买入</div></div><div class="flex items-center gap-3"><div class="w-8 h-8 bg-teal-600 rounded-full flex items-center justify-center text-sm font-bold">3</div><div>当动量转弱或趋势反转时卖出</div></div></div>',
+                diagram: '<div class="bg-gray-800 rounded-lg p-4 text-center"><div class="text-gray-400 mb-2">成长曲线示意</div><div class="flex items-end justify-center gap-1 h-32"><div class="w-3 bg-teal-800 rounded-t" style="height:15%"></div><div class="w-3 bg-teal-700 rounded-t" style="height:25%"></div><div class="w-3 bg-teal-600 rounded-t" style="height:40%"></div><div class="w-3 bg-teal-500 rounded-t" style="height:55%"></div><div class="w-3 bg-teal-400 rounded-t" style="height:70%"></div><div class="w-3 bg-teal-300 rounded-t" style="height:85%"></div><div class="w-3 bg-teal-200 rounded-t" style="height:95%"></div></div><div class="text-xs mt-2 text-gray-400">持续正动量 = 成长信号</div></div>',
+                suitable: '新兴行业崛起期、科技创新周期',
+                unsuitable: '经济衰退期、行业成熟饱和阶段',
+                tips: ['成长股波动较大需控制仓位', '关注成长持续性而非短期涨幅', '适当止盈锁定利润']
+            },
+            'custom': {
+                title: '自定义策略',
+                icon: 'fa-cogs',
+                color: 'indigo',
+                principle: '自定义策略基于用户选择的基础策略进行参数调整和组合，实现个性化的交易逻辑。',
+                mechanism: '<div class="space-y-3"><div class="flex items-center gap-3"><div class="w-8 h-8 bg-indigo-600 rounded-full flex items-center justify-center text-sm font-bold">1</div><div>选择一个基础策略作为核心逻辑</div></div><div class="flex items-center gap-3"><div class="w-8 h-8 bg-indigo-600 rounded-full flex items-center justify-center text-sm font-bold">2</div><div>根据市场特点调整策略参数</div></div><div class="flex items-center gap-3"><div class="w-8 h-8 bg-indigo-600 rounded-full flex items-center justify-center text-sm font-bold">3</div><div>通过回测验证参数有效性</div></div></div>',
+                diagram: '<div class="bg-gray-800 rounded-lg p-4 text-center"><div class="text-gray-400 mb-2">策略组合示意</div><div class="flex items-center justify-center gap-2"><div class="bg-blue-600/50 px-3 py-2 rounded text-sm">基础策略</div><span class="text-2xl">+</span><div class="bg-purple-600/50 px-3 py-2 rounded text-sm">自定义参数</div><span class="text-2xl">=</span><div class="bg-indigo-600/50 px-3 py-2 rounded text-sm">个性化策略</div></div></div>',
+                suitable: '根据选择的基础策略而定',
+                unsuitable: '参数过度优化可能导致过拟合',
+                tips: ['避免过度优化导致曲线拟合', '在不同市场环境下测试策略稳健性', '定期回顾和调整参数']
+            }
+        };
+        
+        function openStrategyGuide(strategyType, strategyName) {
+            const guide = strategyGuides[strategyType] || strategyGuides['custom'];
+            const colors = {
+                blue: 'from-blue-600 to-blue-800',
+                purple: 'from-purple-600 to-purple-800',
+                orange: 'from-orange-600 to-orange-800',
+                yellow: 'from-yellow-600 to-yellow-800',
+                emerald: 'from-emerald-600 to-emerald-800',
+                teal: 'from-teal-600 to-teal-800',
+                indigo: 'from-indigo-600 to-indigo-800'
+            };
+            
+            const modal = document.createElement('div');
+            modal.id = 'strategyGuideModal';
+            modal.className = 'fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4';
+            modal.innerHTML = `
+                <div class="bg-gray-800 rounded-2xl max-w-3xl w-full max-h-[90vh] overflow-y-auto">
+                    <div class="bg-gradient-to-r ${colors[guide.color]} p-6 rounded-t-2xl">
+                        <div class="flex items-center justify-between">
+                            <div class="flex items-center gap-3">
+                                <i class="fas ${guide.icon} text-3xl"></i>
+                                <div>
+                                    <h2 class="text-2xl font-bold">${guide.title}</h2>
+                                    <p class="text-sm opacity-80">${strategyName}</p>
+                                </div>
+                            </div>
+                            <button onclick="document.getElementById('strategyGuideModal').remove()" class="text-white/80 hover:text-white">
+                                <i class="fas fa-times text-2xl"></i>
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <div class="p-6 space-y-6">
+                        <section>
+                            <h3 class="text-lg font-semibold mb-3 flex items-center gap-2"><i class="fas fa-lightbulb text-yellow-400"></i>策略原理</h3>
+                            <p class="text-gray-300">${guide.principle}</p>
+                        </section>
+                        
+                        <section>
+                            <h3 class="text-lg font-semibold mb-3 flex items-center gap-2"><i class="fas fa-cog text-blue-400"></i>运作机制</h3>
+                            ${guide.mechanism}
+                        </section>
+                        
+                        <section>
+                            <h3 class="text-lg font-semibold mb-3 flex items-center gap-2"><i class="fas fa-chart-bar text-green-400"></i>图解说明</h3>
+                            ${guide.diagram}
+                        </section>
+                        
+                        <section class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div class="bg-green-900/30 border border-green-700 rounded-xl p-4">
+                                <h4 class="font-semibold text-green-400 mb-2"><i class="fas fa-check-circle mr-2"></i>适合场景</h4>
+                                <p class="text-sm text-gray-300">${guide.suitable}</p>
+                            </div>
+                            <div class="bg-red-900/30 border border-red-700 rounded-xl p-4">
+                                <h4 class="font-semibold text-red-400 mb-2"><i class="fas fa-times-circle mr-2"></i>不适合场景</h4>
+                                <p class="text-sm text-gray-300">${guide.unsuitable}</p>
+                            </div>
+                        </section>
+                        
+                        <section>
+                            <h3 class="text-lg font-semibold mb-3 flex items-center gap-2"><i class="fas fa-star text-purple-400"></i>实战技巧</h3>
+                            <div class="space-y-2">
+                                ${guide.tips.map(tip => `<div class="flex items-start gap-2 text-sm text-gray-300"><i class="fas fa-angle-right text-purple-400 mt-1"></i><span>${tip}</span></div>`).join('')}
+                            </div>
+                        </section>
+                    </div>
+                </div>
+            `;
+            document.body.appendChild(modal);
+            modal.addEventListener('click', (e) => { if (e.target === modal) modal.remove(); });
         }
 
         async function openBacktestModal(strategyId) {
@@ -358,6 +517,11 @@
             const sharpeRatio = results.sharpe_ratio || 0;
             const maxDrawdown = results.max_drawdown || 0;
             const winRate = results.win_rate || 0;
+            const annualizedReturn = results.annualized_return || 0;
+            const profitFactor = results.profit_factor || 0;
+            
+            // 生成策略分析和建议
+            const analysis = generateStrategyAnalysis(totalReturn, sharpeRatio, maxDrawdown, winRate, profitFactor, annualizedReturn);
             
             content.innerHTML = `
                 <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
@@ -369,40 +533,92 @@
                     </div>
                     <div class="bg-gray-700/50 rounded-lg p-4">
                         <div class="text-gray-400 text-sm mb-1">夏普比率</div>
-                        <div class="text-2xl font-bold">${sharpeRatio.toFixed(2)}</div>
+                        <div class="text-2xl font-bold ${sharpeRatio >= 1 ? 'text-green-400' : sharpeRatio >= 0.5 ? 'text-yellow-400' : 'text-red-400'}">${sharpeRatio.toFixed(2)}</div>
                     </div>
                     <div class="bg-gray-700/50 rounded-lg p-4">
                         <div class="text-gray-400 text-sm mb-1">最大回撤</div>
-                        <div class="text-2xl font-bold text-red-400">${maxDrawdown.toFixed(2)}%</div>
+                        <div class="text-2xl font-bold ${maxDrawdown <= 10 ? 'text-green-400' : maxDrawdown <= 20 ? 'text-yellow-400' : 'text-red-400'}">${maxDrawdown.toFixed(2)}%</div>
                     </div>
                     <div class="bg-gray-700/50 rounded-lg p-4">
                         <div class="text-gray-400 text-sm mb-1">胜率</div>
-                        <div class="text-2xl font-bold">${winRate.toFixed(2)}%</div>
+                        <div class="text-2xl font-bold ${winRate >= 50 ? 'text-green-400' : 'text-yellow-400'}">${winRate.toFixed(2)}%</div>
                     </div>
                 </div>
                 
-                <div class="mb-6">
-                    <h3 class="text-lg font-semibold mb-3">收益曲线</h3>
-                    <canvas id="equityChart" height="100"></canvas>
+                <!-- 策略评估 -->
+                <div class="bg-gradient-to-r ${analysis.grade === 'A' ? 'from-green-900/50 to-emerald-900/50 border-green-600' : analysis.grade === 'B' ? 'from-blue-900/50 to-cyan-900/50 border-blue-600' : analysis.grade === 'C' ? 'from-yellow-900/50 to-amber-900/50 border-yellow-600' : 'from-red-900/50 to-rose-900/50 border-red-600'} border rounded-xl p-5 mb-6">
+                    <div class="flex items-center gap-4 mb-3">
+                        <div class="text-4xl font-bold ${analysis.grade === 'A' ? 'text-green-400' : analysis.grade === 'B' ? 'text-blue-400' : analysis.grade === 'C' ? 'text-yellow-400' : 'text-red-400'}">${analysis.grade}</div>
+                        <div>
+                            <div class="text-lg font-semibold">${analysis.title}</div>
+                            <div class="text-sm text-gray-300">${analysis.subtitle}</div>
+                        </div>
+                    </div>
+                    <p class="text-gray-300 text-sm">${analysis.description}</p>
                 </div>
                 
-                <div class="grid grid-cols-2 gap-4 mb-6">
+                <!-- 图表区域 -->
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+                    <div class="bg-gray-700/30 rounded-xl p-4">
+                        <h3 class="text-lg font-semibold mb-3"><i class="fas fa-chart-line mr-2 text-blue-400"></i>收益曲线</h3>
+                        <canvas id="equityChart" height="120"></canvas>
+                    </div>
+                    <div class="bg-gray-700/30 rounded-xl p-4">
+                        <h3 class="text-lg font-semibold mb-3"><i class="fas fa-chart-area mr-2 text-red-400"></i>回撤分析</h3>
+                        <canvas id="drawdownChart" height="120"></canvas>
+                    </div>
+                </div>
+                
+                <!-- 详细统计 -->
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
                     <div class="bg-gray-700/50 rounded-lg p-4">
-                        <div class="text-gray-400 text-sm mb-2">交易统计</div>
+                        <div class="text-gray-400 text-sm mb-2"><i class="fas fa-exchange-alt mr-2"></i>交易统计</div>
                         <div class="space-y-1 text-sm">
-                            <div>总交易次数: ${results.total_trades || 0}</div>
-                            <div>盈利交易: ${results.winning_trades || 0}</div>
-                            <div>亏损交易: ${results.losing_trades || 0}</div>
-                            <div>平均盈利: $${(results.avg_win || 0).toFixed(2)}</div>
-                            <div>平均亏损: $${(results.avg_loss || 0).toFixed(2)}</div>
-                            <div>盈亏比: ${(results.profit_factor || 0).toFixed(2)}</div>
+                            <div class="flex justify-between"><span>总交易次数:</span><span class="font-semibold">${results.total_trades || 0}</span></div>
+                            <div class="flex justify-between"><span>盈利交易:</span><span class="font-semibold text-green-400">${results.winning_trades || 0}</span></div>
+                            <div class="flex justify-between"><span>亏损交易:</span><span class="font-semibold text-red-400">${results.losing_trades || 0}</span></div>
                         </div>
                     </div>
                     <div class="bg-gray-700/50 rounded-lg p-4">
-                        <div class="text-gray-400 text-sm mb-2">其他指标</div>
+                        <div class="text-gray-400 text-sm mb-2"><i class="fas fa-dollar-sign mr-2"></i>盈亏分析</div>
                         <div class="space-y-1 text-sm">
-                            <div>年化收益率: ${(results.annualized_return || 0).toFixed(2)}%</div>
-                            <div>最终资金: $${(results.final_value || 0).toFixed(2)}</div>
+                            <div class="flex justify-between"><span>平均盈利:</span><span class="font-semibold text-green-400">$${(results.avg_win || 0).toFixed(2)}</span></div>
+                            <div class="flex justify-between"><span>平均亏损:</span><span class="font-semibold text-red-400">$${(results.avg_loss || 0).toFixed(2)}</span></div>
+                            <div class="flex justify-between"><span>盈亏比:</span><span class="font-semibold">${profitFactor.toFixed(2)}</span></div>
+                        </div>
+                    </div>
+                    <div class="bg-gray-700/50 rounded-lg p-4">
+                        <div class="text-gray-400 text-sm mb-2"><i class="fas fa-percentage mr-2"></i>收益指标</div>
+                        <div class="space-y-1 text-sm">
+                            <div class="flex justify-between"><span>年化收益:</span><span class="font-semibold ${annualizedReturn >= 0 ? 'text-green-400' : 'text-red-400'}">${annualizedReturn.toFixed(2)}%</span></div>
+                            <div class="flex justify-between"><span>最终资金:</span><span class="font-semibold">$${(results.final_value || 0).toLocaleString()}</span></div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- 分析建议 -->
+                <div class="bg-gray-700/30 rounded-xl p-5 mb-6">
+                    <h3 class="text-lg font-semibold mb-3"><i class="fas fa-lightbulb mr-2 text-yellow-400"></i>策略分析与建议</h3>
+                    <div class="space-y-3 text-sm text-gray-300">
+                        ${analysis.suggestions.map(s => `<div class="flex items-start gap-2"><i class="fas fa-check-circle text-blue-400 mt-1"></i><span>${s}</span></div>`).join('')}
+                    </div>
+                </div>
+                
+                <!-- 市场适用性 -->
+                <div class="bg-gray-700/30 rounded-xl p-5">
+                    <h3 class="text-lg font-semibold mb-3"><i class="fas fa-compass mr-2 text-purple-400"></i>市场适用性分析</h3>
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
+                        <div class="bg-gray-800/50 rounded-lg p-3">
+                            <div class="text-green-400 font-semibold mb-1">适合市场环境</div>
+                            <p class="text-gray-400">${analysis.suitableMarket}</p>
+                        </div>
+                        <div class="bg-gray-800/50 rounded-lg p-3">
+                            <div class="text-red-400 font-semibold mb-1">不适合市场环境</div>
+                            <p class="text-gray-400">${analysis.unsuitableMarket}</p>
+                        </div>
+                        <div class="bg-gray-800/50 rounded-lg p-3">
+                            <div class="text-blue-400 font-semibold mb-1">风险提示</div>
+                            <p class="text-gray-400">${analysis.riskWarning}</p>
                         </div>
                     </div>
                 </div>
@@ -420,31 +636,128 @@
                             data: results.equity_curve,
                             borderColor: '#3b82f6',
                             backgroundColor: 'rgba(59, 130, 246, 0.1)',
+                            fill: true,
                             tension: 0.4
                         }]
                     },
                     options: {
                         responsive: true,
                         maintainAspectRatio: true,
-                        plugins: {
-                            legend: { display: false }
-                        },
+                        plugins: { legend: { display: false } },
                         scales: {
-                            y: {
-                                beginAtZero: false,
-                                ticks: { color: '#9ca3af' },
-                                grid: { color: 'rgba(255, 255, 255, 0.1)' }
-                            },
-                            x: {
-                                ticks: { color: '#9ca3af' },
-                                grid: { color: 'rgba(255, 255, 255, 0.1)' }
-                            }
+                            y: { beginAtZero: false, ticks: { color: '#9ca3af' }, grid: { color: 'rgba(255, 255, 255, 0.1)' } },
+                            x: { ticks: { color: '#9ca3af', maxTicksLimit: 10 }, grid: { color: 'rgba(255, 255, 255, 0.1)' } }
+                        }
+                    }
+                });
+                
+                // Draw drawdown chart
+                const drawdowns = calculateDrawdowns(results.equity_curve);
+                const ddCtx = document.getElementById('drawdownChart').getContext('2d');
+                new Chart(ddCtx, {
+                    type: 'line',
+                    data: {
+                        labels: drawdowns.map((_, i) => `Day ${i + 1}`),
+                        datasets: [{
+                            label: 'Drawdown',
+                            data: drawdowns,
+                            borderColor: '#ef4444',
+                            backgroundColor: 'rgba(239, 68, 68, 0.2)',
+                            fill: true,
+                            tension: 0.4
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: true,
+                        plugins: { legend: { display: false } },
+                        scales: {
+                            y: { ticks: { color: '#9ca3af', callback: v => v.toFixed(1) + '%' }, grid: { color: 'rgba(255, 255, 255, 0.1)' } },
+                            x: { ticks: { color: '#9ca3af', maxTicksLimit: 10 }, grid: { color: 'rgba(255, 255, 255, 0.1)' } }
                         }
                     }
                 });
             }
             
             document.getElementById('resultsModal').classList.remove('hidden');
+        }
+        
+        function calculateDrawdowns(equityCurve) {
+            if (!equityCurve || equityCurve.length === 0) return [];
+            let runningMax = equityCurve[0];
+            return equityCurve.map(value => {
+                runningMax = Math.max(runningMax, value);
+                return ((value - runningMax) / runningMax) * 100;
+            });
+        }
+        
+        function generateStrategyAnalysis(totalReturn, sharpeRatio, maxDrawdown, winRate, profitFactor, annualizedReturn) {
+            let grade = 'D';
+            let title = '需要改进';
+            let subtitle = '策略表现欠佳';
+            let description = '';
+            let suggestions = [];
+            let suitableMarket = '';
+            let unsuitableMarket = '';
+            let riskWarning = '';
+            
+            // 综合评分
+            let score = 0;
+            if (totalReturn > 20) score += 3; else if (totalReturn > 10) score += 2; else if (totalReturn > 0) score += 1;
+            if (sharpeRatio > 1.5) score += 3; else if (sharpeRatio > 1) score += 2; else if (sharpeRatio > 0.5) score += 1;
+            if (maxDrawdown < 10) score += 3; else if (maxDrawdown < 20) score += 2; else if (maxDrawdown < 30) score += 1;
+            if (winRate > 55) score += 2; else if (winRate > 45) score += 1;
+            if (profitFactor > 2) score += 2; else if (profitFactor > 1.5) score += 1;
+            
+            if (score >= 10) { grade = 'A'; title = '表现优秀'; subtitle = '策略具有良好的风险收益特征'; }
+            else if (score >= 7) { grade = 'B'; title = '表现良好'; subtitle = '策略有一定优势但仍有提升空间'; }
+            else if (score >= 4) { grade = 'C'; title = '表现一般'; subtitle = '策略需要优化部分参数'; }
+            
+            // 生成描述
+            if (totalReturn > 0) {
+                description = `该策略在回测期间实现了${totalReturn.toFixed(1)}%的正收益，`;
+            } else {
+                description = `该策略在回测期间出现了${Math.abs(totalReturn).toFixed(1)}%的亏损，`;
+            }
+            
+            if (sharpeRatio >= 1) {
+                description += `风险调整后收益良好（夏普比率${sharpeRatio.toFixed(2)}），`;
+            } else {
+                description += `风险调整后收益偏低（夏普比率${sharpeRatio.toFixed(2)}），`;
+            }
+            
+            description += `最大回撤控制在${maxDrawdown.toFixed(1)}%，胜率为${winRate.toFixed(1)}%。`;
+            
+            // 生成建议
+            if (sharpeRatio < 1) suggestions.push('考虑优化入场/出场时机以提高风险调整后收益');
+            if (maxDrawdown > 20) suggestions.push('建议增加止损机制或降低仓位以控制回撤');
+            if (winRate < 45) suggestions.push('可以尝试调整策略参数提高胜率，或确保盈亏比足够高');
+            if (profitFactor < 1.5) suggestions.push('考虑优化止盈止损比例以提高盈亏比');
+            if (totalReturn < 10) suggestions.push('可以尝试更长的回测周期或不同的市场环境验证策略稳定性');
+            if (suggestions.length === 0) suggestions.push('策略表现稳健，建议在实盘前进行更多样本外测试');
+            
+            // 市场适用性
+            if (sharpeRatio > 1 && maxDrawdown < 15) {
+                suitableMarket = '稳定上涨或震荡市场，波动率适中的环境';
+                unsuitableMarket = '高波动率或快速反转的市场环境';
+            } else if (winRate > 50) {
+                suitableMarket = '趋势明确的市场，适合跟随主要趋势';
+                unsuitableMarket = '横盘震荡或频繁反转的市场';
+            } else {
+                suitableMarket = '需要进一步测试确定最佳市场环境';
+                unsuitableMarket = '高度不确定或流动性差的市场';
+            }
+            
+            // 风险提示
+            if (maxDrawdown > 30) {
+                riskWarning = '回撤较大，实盘需严格控制仓位和设置止损';
+            } else if (maxDrawdown > 20) {
+                riskWarning = '注意回撤风险，建议分批建仓并设置止损线';
+            } else {
+                riskWarning = '风险控制良好，但仍需关注极端市场情况';
+            }
+            
+            return { grade, title, subtitle, description, suggestions, suitableMarket, unsuitableMarket, riskWarning };
         }
 
         function closeResultsModal() {
