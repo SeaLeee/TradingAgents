@@ -199,6 +199,8 @@ def run_custom_strategy(
     **params: Any
 ) -> Dict:
     """Custom strategy wrapper that reuses a base strategy."""
+    if not base_strategy:
+        base_strategy = "moving_average_crossover"
     resolved_type = STRATEGY_ALIASES.get(base_strategy, base_strategy)
     strategy = STRATEGY_REGISTRY.get(resolved_type)
     if not strategy:
