@@ -1,0 +1,555 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>股票策略适配库 - TradingAgents</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        .gradient-bg {
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+        }
+        .stock-card {
+            transition: all 0.3s ease;
+        }
+        .stock-card:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+        }
+        .grade-a { background: linear-gradient(135deg, #fbbf24, #f59e0b); color: #1f2937; }
+        .grade-b { background: linear-gradient(135deg, #60a5fa, #3b82f6); color: #1f2937; }
+        .grade-c { background: linear-gradient(135deg, #a78bfa, #8b5cf6); color: white; }
+        .grade-d { background: linear-gradient(135deg, #9ca3af, #6b7280); color: white; }
+    </style>
+</head>
+<body class="gradient-bg min-h-screen text-white">
+    <!-- Navigation -->
+    <nav class="bg-gray-900/90 backdrop-blur-sm border-b border-gray-700 p-4">
+        <div class="max-w-7xl mx-auto flex items-center justify-between">
+            <div class="flex items-center gap-4">
+                <a href="/dashboard" class="text-blue-400 hover:text-blue-300">
+                    <i class="fas fa-home"></i> 首页
+                </a>
+                <a href="/strategies" class="text-gray-300 hover:text-white">回测</a>
+                <a href="/simulator" class="text-gray-300 hover:text-white">模拟交易</a>
+                <a href="/data-hub" class="text-gray-300 hover:text-white">数据</a>
+                <span class="text-gray-500">|</span>
+                <h1 class="text-xl font-bold">📚 股票策略适配库</h1>
+            </div>
+            <div class="flex items-center gap-4">
+                <a href="/logout" class="text-gray-400 hover:text-white">
+                    <i class="fas fa-sign-out-alt"></i> 退出
+                </a>
+            </div>
+        </div>
+    </nav>
+
+    <div class="max-w-7xl mx-auto p-6">
+        <!-- Header Section -->
+        <div class="bg-gradient-to-r from-purple-900/50 to-blue-900/50 rounded-xl p-6 mb-6 border border-purple-500/30">
+            <div class="flex items-center justify-between">
+                <div>
+                    <h2 class="text-2xl font-bold mb-2">股票策略适配库</h2>
+                    <p class="text-gray-400">每只股票都有自己的"性格"，找到最适合它的交易策略</p>
+                </div>
+                <div class="flex gap-3">
+                    <button onclick="showAnalyzeModal()" class="bg-purple-600 hover:bg-purple-700 px-4 py-2 rounded-lg font-semibold transition-colors">
+                        <i class="fas fa-microscope mr-2"></i>分析新股票
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Search and Filter -->
+        <div class="bg-gray-800/50 rounded-xl p-4 mb-6 border border-gray-700">
+            <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+                <div class="md:col-span-2">
+                    <label class="block text-sm font-medium text-gray-300 mb-2">搜索股票</label>
+                    <input type="text" id="searchInput" placeholder="输入股票代码或名称..."
+                        class="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-2 focus:ring-2 focus:ring-purple-500"
+                        oninput="filterStocks()">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-300 mb-2">波动性</label>
+                    <select id="filterVolatility" class="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-2"
+                        onchange="filterStocks()">
+                        <option value="">全部</option>
+                        <option value="low">低波动</option>
+                        <option value="medium">中等波动</option>
+                        <option value="high">高波动</option>
+                        <option value="extreme">极高波动</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-300 mb-2">评分等级</label>
+                    <select id="filterGrade" class="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-2"
+                        onchange="filterStocks()">
+                        <option value="">全部</option>
+                        <option value="A">A级</option>
+                        <option value="B">B级</option>
+                        <option value="C">C级</option>
+                    </select>
+                </div>
+            </div>
+        </div>
+
+        <!-- Stock Library Grid -->
+        <div id="stocksContainer" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            <div class="col-span-full text-center text-gray-400 py-12">
+                <i class="fas fa-spinner fa-spin text-4xl mb-4"></i>
+                <p>加载中...</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Analyze Stock Modal -->
+    <div id="analyzeModal" class="hidden fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+        <div class="bg-gray-800 rounded-2xl p-6 max-w-md w-full">
+            <div class="flex items-center justify-between mb-6">
+                <h2 class="text-xl font-bold">分析股票性格</h2>
+                <button onclick="closeAnalyzeModal()" class="text-gray-400 hover:text-white">
+                    <i class="fas fa-times text-xl"></i>
+                </button>
+            </div>
+
+            <div class="space-y-4">
+                <div>
+                    <label class="block text-sm font-medium text-gray-300 mb-2">股票代码</label>
+                    <input type="text" id="analyzeTickerInput" placeholder="AAPL"
+                        class="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-2 focus:ring-2 focus:ring-purple-500 uppercase">
+                </div>
+
+                <p class="text-sm text-gray-400">
+                    系统将分析该股票的历史数据，识别其波动性、趋势性和动量特征，并推荐最适合的交易策略。
+                </p>
+
+                <div class="flex gap-3">
+                    <button onclick="analyzeStock()" class="flex-1 bg-purple-600 hover:bg-purple-700 px-6 py-3 rounded-lg font-semibold transition-colors">
+                        <i class="fas fa-microscope mr-2"></i>开始分析
+                    </button>
+                    <button onclick="closeAnalyzeModal()" class="px-6 py-3 bg-gray-700 hover:bg-gray-600 rounded-lg transition-colors">
+                        取消
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Stock Detail Modal -->
+    <div id="detailModal" class="hidden fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+        <div class="bg-gray-800 rounded-2xl p-6 max-w-4xl w-full max-h-[90vh] overflow-y-auto">
+            <div class="flex items-center justify-between mb-6">
+                <h2 id="detailTitle" class="text-2xl font-bold">股票详情</h2>
+                <button onclick="closeDetailModal()" class="text-gray-400 hover:text-white">
+                    <i class="fas fa-times text-2xl"></i>
+                </button>
+            </div>
+
+            <div id="detailContent">
+                <!-- Detail content will be loaded here -->
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let allStocks = [];
+        let currentDetailTicker = null;
+
+        // Initialize
+        document.addEventListener('DOMContentLoaded', () => {
+            loadStockLibrary();
+        });
+
+        async function loadStockLibrary() {
+            try {
+                const response = await fetch('/api/stock-library');
+                if (!response.ok) throw new Error('Failed to load stock library');
+
+                const data = await response.json();
+                allStocks = data.stocks || [];
+                renderStocks(allStocks);
+
+            } catch (error) {
+                console.error('Error loading stock library:', error);
+                document.getElementById('stocksContainer').innerHTML = `
+                    <div class="col-span-full text-center text-gray-400 py-12">
+                        <i class="fas fa-exclamation-circle text-4xl mb-4 text-red-400"></i>
+                        <p>加载失败: ${error.message}</p>
+                        <button onclick="loadStockLibrary()" class="mt-4 text-blue-400 hover:underline">重试</button>
+                    </div>
+                `;
+            }
+        }
+
+        function renderStocks(stocks) {
+            const container = document.getElementById('stocksContainer');
+
+            if (stocks.length === 0) {
+                container.innerHTML = `
+                    <div class="col-span-full text-center text-gray-400 py-12">
+                        <i class="fas fa-folder-open text-4xl mb-4"></i>
+                        <p>暂无股票数据</p>
+                        <button onclick="showAnalyzeModal()" class="mt-4 text-purple-400 hover:underline">分析第一只股票</button>
+                    </div>
+                `;
+                return;
+            }
+
+            container.innerHTML = stocks.map(stock => {
+                const personality = stock.personality || {};
+                const strategies = stock.matched_strategies || [];
+                const bestStrategy = strategies[0];
+                const volatilityColors = {
+                    'low': 'text-green-400',
+                    'medium': 'text-yellow-400',
+                    'high': 'text-orange-400',
+                    'extreme': 'text-red-400'
+                };
+                const volatilityLabels = {
+                    'low': '低波动',
+                    'medium': '中波动',
+                    'high': '高波动',
+                    'extreme': '极高波动'
+                };
+
+                return `
+                    <div class="stock-card bg-gray-800/60 border border-gray-700 rounded-xl p-5 cursor-pointer"
+                         onclick="showStockDetail('${stock.ticker}')">
+                        <div class="flex items-center justify-between mb-4">
+                            <div>
+                                <h3 class="text-xl font-bold text-blue-400">${stock.ticker}</h3>
+                                <p class="text-sm text-gray-400">${stock.stock_name || ''}</p>
+                            </div>
+                            ${bestStrategy && bestStrategy.match_grade ? `
+                                <span class="grade-${bestStrategy.match_grade.toLowerCase()} px-3 py-1 rounded-full text-sm font-bold">
+                                    ${bestStrategy.match_grade}级
+                                </span>
+                            ` : ''}
+                        </div>
+
+                        <!-- Personality Tags -->
+                        <div class="flex flex-wrap gap-2 mb-4">
+                            ${personality.volatility_level ? `
+                                <span class="text-xs px-2 py-1 rounded-full bg-gray-700 ${volatilityColors[personality.volatility_level] || 'text-gray-400'}">
+                                    <i class="fas fa-chart-line mr-1"></i>${volatilityLabels[personality.volatility_level] || personality.volatility_level}
+                                </span>
+                            ` : ''}
+                            ${personality.trend_tendency ? `
+                                <span class="text-xs px-2 py-1 rounded-full bg-gray-700 text-purple-400">
+                                    <i class="fas fa-arrow-trend-up mr-1"></i>${personality.trend_tendency === 'trending' ? '趋势型' : personality.trend_tendency === 'mean_reverting' ? '均值回归' : '随机'}
+                                </span>
+                            ` : ''}
+                            ${personality.momentum_profile ? `
+                                <span class="text-xs px-2 py-1 rounded-full bg-gray-700 ${personality.momentum_profile === 'positive' ? 'text-green-400' : personality.momentum_profile === 'negative' ? 'text-red-400' : 'text-gray-400'}">
+                                    <i class="fas fa-rocket mr-1"></i>${personality.momentum_profile === 'positive' ? '正动量' : personality.momentum_profile === 'negative' ? '负动量' : '中性'}
+                                </span>
+                            ` : ''}
+                        </div>
+
+                        <!-- Matched Strategies -->
+                        <div class="border-t border-gray-700 pt-4">
+                            <div class="text-sm text-gray-400 mb-2">适配策略 (${strategies.length})</div>
+                            <div class="space-y-2">
+                                ${strategies.slice(0, 3).map((s, i) => `
+                                    <div class="flex items-center justify-between text-sm">
+                                        <span class="${i === 0 ? 'text-yellow-400' : 'text-gray-300'}">
+                                            ${i === 0 ? '<i class="fas fa-crown mr-1"></i>' : ''}
+                                            ${s.strategy_name}
+                                        </span>
+                                        <span class="${(s.simulation_win_rate || s.backtest_win_rate || 0) >= 50 ? 'text-green-400' : 'text-red-400'}">
+                                            ${((s.simulation_win_rate || s.backtest_win_rate || 0)).toFixed(1)}%
+                                        </span>
+                                    </div>
+                                `).join('')}
+                                ${strategies.length > 3 ? `<div class="text-xs text-gray-500">还有 ${strategies.length - 3} 个策略...</div>` : ''}
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        function filterStocks() {
+            const search = document.getElementById('searchInput').value.toLowerCase();
+            const volatility = document.getElementById('filterVolatility').value;
+            const grade = document.getElementById('filterGrade').value;
+
+            const filtered = allStocks.filter(stock => {
+                const matchSearch = !search ||
+                    stock.ticker.toLowerCase().includes(search) ||
+                    (stock.stock_name || '').toLowerCase().includes(search);
+
+                const matchVolatility = !volatility ||
+                    (stock.personality && stock.personality.volatility_level === volatility);
+
+                const matchGrade = !grade ||
+                    (stock.matched_strategies && stock.matched_strategies.some(s => s.match_grade === grade));
+
+                return matchSearch && matchVolatility && matchGrade;
+            });
+
+            renderStocks(filtered);
+        }
+
+        function showAnalyzeModal() {
+            document.getElementById('analyzeModal').classList.remove('hidden');
+            document.getElementById('analyzeTickerInput').value = '';
+            document.getElementById('analyzeTickerInput').focus();
+        }
+
+        function closeAnalyzeModal() {
+            document.getElementById('analyzeModal').classList.add('hidden');
+        }
+
+        async function analyzeStock() {
+            const ticker = document.getElementById('analyzeTickerInput').value.trim().toUpperCase();
+            if (!ticker) {
+                alert('请输入股票代码');
+                return;
+            }
+
+            try {
+                const btn = event.target;
+                btn.disabled = true;
+                btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i>分析中...';
+
+                const response = await fetch(`/api/stock-library/${ticker}/analyze`, {
+                    method: 'POST'
+                });
+
+                if (!response.ok) {
+                    const err = await response.json();
+                    throw new Error(err.detail || '分析失败');
+                }
+
+                const data = await response.json();
+                alert(`分析完成！\n\n${data.analysis?.analysis_notes || '分析结果已保存'}`);
+
+                closeAnalyzeModal();
+                await loadStockLibrary();
+
+            } catch (error) {
+                console.error('Error analyzing stock:', error);
+                alert('分析失败: ' + error.message);
+            } finally {
+                const btn = document.querySelector('#analyzeModal button[onclick="analyzeStock()"]');
+                if (btn) {
+                    btn.disabled = false;
+                    btn.innerHTML = '<i class="fas fa-microscope mr-2"></i>开始分析';
+                }
+            }
+        }
+
+        async function showStockDetail(ticker) {
+            currentDetailTicker = ticker;
+            document.getElementById('detailModal').classList.remove('hidden');
+            document.getElementById('detailTitle').textContent = `${ticker} 详情`;
+            document.getElementById('detailContent').innerHTML = `
+                <div class="text-center text-gray-400 py-8">
+                    <i class="fas fa-spinner fa-spin text-2xl"></i>
+                    <p class="mt-2">加载中...</p>
+                </div>
+            `;
+
+            try {
+                const response = await fetch(`/api/stock-library/${ticker}`);
+                if (!response.ok) throw new Error('Failed to load stock detail');
+
+                const data = await response.json();
+                renderStockDetail(data);
+
+            } catch (error) {
+                console.error('Error loading stock detail:', error);
+                document.getElementById('detailContent').innerHTML = `
+                    <div class="text-center text-red-400 py-8">
+                        <p>加载失败: ${error.message}</p>
+                    </div>
+                `;
+            }
+        }
+
+        function renderStockDetail(data) {
+            const personality = data.personality || {};
+            const strategies = data.matched_strategies || [];
+
+            document.getElementById('detailContent').innerHTML = `
+                <!-- Personality Section -->
+                <div class="bg-gray-700/50 rounded-xl p-4 mb-6">
+                    <h3 class="text-lg font-semibold mb-4"><i class="fas fa-dna mr-2 text-purple-400"></i>股票性格</h3>
+                    ${personality.ticker ? `
+                        <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
+                            <div class="text-center">
+                                <div class="text-gray-400 text-sm">波动性</div>
+                                <div class="text-xl font-bold capitalize">${personality.volatility_level || '-'}</div>
+                                ${personality.avg_daily_range ? `<div class="text-xs text-gray-500">日均${personality.avg_daily_range}%</div>` : ''}
+                            </div>
+                            <div class="text-center">
+                                <div class="text-gray-400 text-sm">趋势倾向</div>
+                                <div class="text-xl font-bold capitalize">${personality.trend_tendency || '-'}</div>
+                                ${personality.trend_strength ? `<div class="text-xs text-gray-500">${personality.trend_strength}</div>` : ''}
+                            </div>
+                            <div class="text-center">
+                                <div class="text-gray-400 text-sm">动量状态</div>
+                                <div class="text-xl font-bold capitalize">${personality.momentum_profile || '-'}</div>
+                                ${personality.momentum_persistence ? `<div class="text-xs text-gray-500">${personality.momentum_persistence}</div>` : ''}
+                            </div>
+                            <div class="text-center">
+                                <div class="text-gray-400 text-sm">Beta值</div>
+                                <div class="text-xl font-bold">${personality.beta || '-'}</div>
+                            </div>
+                        </div>
+
+                        ${personality.recommended_strategies?.length ? `
+                            <div class="flex flex-wrap gap-2 mb-2">
+                                <span class="text-sm text-gray-400">推荐策略:</span>
+                                ${personality.recommended_strategies.map(s => `
+                                    <span class="text-xs px-2 py-1 rounded bg-green-600/30 text-green-400">${s}</span>
+                                `).join('')}
+                            </div>
+                        ` : ''}
+
+                        ${personality.avoided_strategies?.length ? `
+                            <div class="flex flex-wrap gap-2">
+                                <span class="text-sm text-gray-400">不推荐:</span>
+                                ${personality.avoided_strategies.map(s => `
+                                    <span class="text-xs px-2 py-1 rounded bg-red-600/30 text-red-400">${s}</span>
+                                `).join('')}
+                            </div>
+                        ` : ''}
+                    ` : `
+                        <p class="text-gray-400 text-center py-4">暂无性格分析数据</p>
+                        <div class="text-center">
+                            <button onclick="analyzeStockFromDetail('${data.ticker}')"
+                                class="bg-purple-600 hover:bg-purple-700 px-4 py-2 rounded-lg">
+                                <i class="fas fa-microscope mr-2"></i>立即分析
+                            </button>
+                        </div>
+                    `}
+                </div>
+
+                <!-- Matched Strategies -->
+                <div class="bg-gray-700/50 rounded-xl p-4 mb-6">
+                    <h3 class="text-lg font-semibold mb-4"><i class="fas fa-check-circle mr-2 text-green-400"></i>适配策略 (${strategies.length})</h3>
+                    ${strategies.length > 0 ? `
+                        <div class="overflow-x-auto">
+                            <table class="w-full">
+                                <thead>
+                                    <tr class="text-left text-gray-400 border-b border-gray-600">
+                                        <th class="py-2 px-3">策略</th>
+                                        <th class="py-2 px-3">类型</th>
+                                        <th class="py-2 px-3">胜率</th>
+                                        <th class="py-2 px-3">评分</th>
+                                        <th class="py-2 px-3">等级</th>
+                                        <th class="py-2 px-3">操作</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    ${strategies.map(s => `
+                                        <tr class="border-b border-gray-700 hover:bg-gray-600/30">
+                                            <td class="py-3 px-3 font-medium">${s.strategy_name}</td>
+                                            <td class="py-3 px-3 text-gray-400">${s.strategy_type}</td>
+                                            <td class="py-3 px-3 ${(s.simulation_win_rate || s.backtest_win_rate || 0) >= 50 ? 'text-green-400' : 'text-red-400'}">
+                                                ${(s.simulation_win_rate || s.backtest_win_rate || 0).toFixed(1)}%
+                                            </td>
+                                            <td class="py-3 px-3">${s.confidence_score || '-'}</td>
+                                            <td class="py-3 px-3">
+                                                ${s.match_grade ? `<span class="grade-${s.match_grade.toLowerCase()} px-2 py-0.5 rounded text-xs font-bold">${s.match_grade}</span>` : '-'}
+                                            </td>
+                                            <td class="py-3 px-3">
+                                                <button onclick="removeStrategyMatch('${data.ticker}', ${s.strategy_id})"
+                                                    class="text-red-400 hover:text-red-300 text-sm">
+                                                    <i class="fas fa-trash"></i>
+                                                </button>
+                                            </td>
+                                        </tr>
+                                    `).join('')}
+                                </tbody>
+                            </table>
+                        </div>
+                    ` : `
+                        <p class="text-gray-400 text-center py-4">暂无适配策略</p>
+                    `}
+                </div>
+
+                <!-- Actions -->
+                <div class="flex gap-3">
+                    <a href="/strategies" class="flex-1 bg-blue-600 hover:bg-blue-700 px-4 py-3 rounded-lg font-semibold text-center transition-colors">
+                        <i class="fas fa-flask mr-2"></i>去回测
+                    </a>
+                    <a href="/simulator" class="flex-1 bg-green-600 hover:bg-green-700 px-4 py-3 rounded-lg font-semibold text-center transition-colors">
+                        <i class="fas fa-play mr-2"></i>模拟交易
+                    </a>
+                    <button onclick="getBestStrategies('${data.ticker}')" class="flex-1 bg-purple-600 hover:bg-purple-700 px-4 py-3 rounded-lg font-semibold transition-colors">
+                        <i class="fas fa-magic mr-2"></i>推荐策略
+                    </button>
+                </div>
+            `;
+        }
+
+        function closeDetailModal() {
+            document.getElementById('detailModal').classList.add('hidden');
+            currentDetailTicker = null;
+        }
+
+        async function analyzeStockFromDetail(ticker) {
+            try {
+                const response = await fetch(`/api/stock-library/${ticker}/analyze`, {
+                    method: 'POST'
+                });
+
+                if (!response.ok) throw new Error('分析失败');
+
+                alert('分析完成！');
+                await showStockDetail(ticker);
+                await loadStockLibrary();
+
+            } catch (error) {
+                alert('分析失败: ' + error.message);
+            }
+        }
+
+        async function getBestStrategies(ticker) {
+            try {
+                const response = await fetch(`/api/stock-library/${ticker}/best-strategies?limit=5`);
+                if (!response.ok) throw new Error('获取失败');
+
+                const data = await response.json();
+                const strategies = data.strategies || [];
+
+                let message = `为 ${ticker} 推荐的策略:\n\n`;
+                strategies.forEach((s, i) => {
+                    message += `${i + 1}. ${s.strategy_name} (评分: ${s.score})\n`;
+                    message += `   ${s.is_recommended ? '✓ 推荐' : ''}${s.is_avoided ? '✗ 不推荐' : ''}\n`;
+                });
+
+                alert(message);
+
+            } catch (error) {
+                alert('获取推荐失败: ' + error.message);
+            }
+        }
+
+        async function removeStrategyMatch(ticker, strategyId) {
+            if (!confirm('确定要移除这个策略匹配吗？')) {
+                return;
+            }
+
+            try {
+                const response = await fetch(`/api/stock-library/${ticker}/strategy/${strategyId}`, {
+                    method: 'DELETE'
+                });
+
+                if (!response.ok) throw new Error('移除失败');
+
+                await showStockDetail(ticker);
+                await loadStockLibrary();
+
+            } catch (error) {
+                alert('移除失败: ' + error.message);
+            }
+        }
+    </script>
+</body>
+</html>

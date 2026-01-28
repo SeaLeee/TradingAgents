@@ -14,6 +14,7 @@
                 <a href="/dashboard" class="text-blue-400 hover:text-blue-300">首页</a>
                 <a href="/strategies" class="text-gray-300 hover:text-white">回测</a>
                 <a href="/strategy-library" class="text-gray-300 hover:text-white">策略库</a>
+                <a href="/stock-library" class="text-gray-300 hover:text-white">股票适配库</a>
                 <a href="/reports" class="text-gray-300 hover:text-white">报告</a>
                 <a href="/signals" class="text-gray-300 hover:text-white">信号</a>
             </div>
@@ -21,57 +22,402 @@
         </div>
     </nav>
 
-    <div class="max-w-6xl mx-auto p-6 space-y-6">
-        <header>
-            <h1 class="text-3xl font-bold">数据中心</h1>
-            <p class="text-gray-400">查看数据源与历史数据，支持快速预览。</p>
+    <div class="max-w-7xl mx-auto p-6 space-y-6">
+        <header class="flex items-center justify-between">
+            <div>
+                <h1 class="text-3xl font-bold">数据中心</h1>
+                <p class="text-gray-400">查看数据源、历史数据，管理数据库备份与恢复。</p>
+            </div>
+            <!-- 快捷操作按钮 -->
+            <div class="flex gap-3">
+                <button onclick="showQuickBackup()" class="px-4 py-2 bg-green-600 hover:bg-green-700 rounded-lg flex items-center gap-2">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/>
+                    </svg>
+                    快速备份
+                </button>
+                <button onclick="showRestoreModal()" class="px-4 py-2 bg-purple-600 hover:bg-purple-700 rounded-lg flex items-center gap-2">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"/>
+                    </svg>
+                    恢复数据
+                </button>
+            </div>
         </header>
 
-        <section class="bg-gray-800/60 border border-gray-700 rounded-xl p-6">
-            <h2 class="text-lg font-semibold mb-2">数据源</h2>
-            <ul id="sourcesList" class="text-gray-300 text-sm"></ul>
-        </section>
+        <!-- 标签页切换 -->
+        <div class="flex border-b border-gray-700">
+            <button onclick="switchTab('data')" id="tab-data" class="px-6 py-3 border-b-2 border-blue-500 text-blue-400 font-medium">
+                数据查询
+            </button>
+            <button onclick="switchTab('backup')" id="tab-backup" class="px-6 py-3 border-b-2 border-transparent text-gray-400 hover:text-white">
+                备份管理
+            </button>
+            <button onclick="switchTab('config')" id="tab-config" class="px-6 py-3 border-b-2 border-transparent text-gray-400 hover:text-white">
+                备份配置
+            </button>
+        </div>
 
-        <section class="bg-gray-800/60 border border-gray-700 rounded-xl p-6 space-y-4">
-            <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
-                <div>
-                    <label class="block text-sm text-gray-300 mb-2">标的</label>
-                    <input id="dataTicker" class="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2" value="AAPL" />
+        <!-- 数据查询标签页 -->
+        <div id="content-data" class="space-y-6">
+            <section class="bg-gray-800/60 border border-gray-700 rounded-xl p-6">
+                <h2 class="text-lg font-semibold mb-2">数据源</h2>
+                <ul id="sourcesList" class="text-gray-300 text-sm"></ul>
+            </section>
+
+            <section class="bg-gray-800/60 border border-gray-700 rounded-xl p-6 space-y-4">
+                <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+                    <div>
+                        <label class="block text-sm text-gray-300 mb-2">标的</label>
+                        <input id="dataTicker" class="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2" value="AAPL" />
+                    </div>
+                    <div>
+                        <label class="block text-sm text-gray-300 mb-2">开始日期</label>
+                        <input id="dataStart" type="date" class="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2" />
+                    </div>
+                    <div>
+                        <label class="block text-sm text-gray-300 mb-2">结束日期</label>
+                        <input id="dataEnd" type="date" class="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2" />
+                    </div>
+                    <div class="flex items-end">
+                        <button id="fetchBtn" class="px-4 py-2 bg-blue-600 rounded-lg w-full">获取数据</button>
+                    </div>
                 </div>
-                <div>
-                    <label class="block text-sm text-gray-300 mb-2">开始日期</label>
-                    <input id="dataStart" type="date" class="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2" />
+                <canvas id="dataChart" height="120"></canvas>
+            </section>
+
+            <section class="bg-gray-800/60 border border-gray-700 rounded-xl p-6">
+                <table class="w-full text-sm">
+                    <thead>
+                        <tr class="text-gray-400 border-b border-gray-700">
+                            <th class="text-left py-2">日期</th>
+                            <th class="text-left py-2">开盘</th>
+                            <th class="text-left py-2">最高</th>
+                            <th class="text-left py-2">最低</th>
+                            <th class="text-left py-2">收盘</th>
+                        </tr>
+                    </thead>
+                    <tbody id="dataTable"></tbody>
+                </table>
+            </section>
+        </div>
+
+        <!-- 备份管理标签页 -->
+        <div id="content-backup" class="space-y-6 hidden">
+            <!-- 创建备份表单 -->
+            <section class="bg-gray-800/60 border border-gray-700 rounded-xl p-6">
+                <h2 class="text-lg font-semibold mb-4">创建新备份</h2>
+                <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+                    <div>
+                        <label class="block text-sm text-gray-300 mb-2">备份类型</label>
+                        <select id="backupType" class="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2">
+                            <option value="full">完整备份</option>
+                            <option value="strategies_only">仅策略数据</option>
+                            <option value="user_data">用户数据</option>
+                            <option value="trades_only">交易记录</option>
+                            <option value="stock_library">股票适配库</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-sm text-gray-300 mb-2">导出格式</label>
+                        <select id="backupFormat" class="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2">
+                            <option value="json">JSON</option>
+                            <option value="sqlite">SQLite</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-sm text-gray-300 mb-2">保存位置</label>
+                        <select id="backupDestination" class="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2" onchange="toggleDestinationOptions()">
+                            <option value="local">本地存储</option>
+                            <option value="github">GitHub</option>
+                            <option value="aliyun_drive">阿里云盘</option>
+                        </select>
+                    </div>
+                    <div class="flex items-end">
+                        <button onclick="createBackup()" class="px-4 py-2 bg-green-600 hover:bg-green-700 rounded-lg w-full flex items-center justify-center gap-2">
+                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4"/>
+                            </svg>
+                            开始备份
+                        </button>
+                    </div>
                 </div>
-                <div>
-                    <label class="block text-sm text-gray-300 mb-2">结束日期</label>
-                    <input id="dataEnd" type="date" class="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2" />
+
+                <!-- 本地路径选项 -->
+                <div id="localOptions" class="mt-4">
+                    <label class="block text-sm text-gray-300 mb-2">自定义保存路径（可选）</label>
+                    <input id="customPath" type="text" class="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2" placeholder="留空使用默认路径 (web/data/backups/)"/>
                 </div>
-                <div class="flex items-end">
-                    <button id="fetchBtn" class="px-4 py-2 bg-blue-600 rounded-lg w-full">获取数据</button>
+
+                <!-- GitHub 选项 -->
+                <div id="githubOptions" class="mt-4 hidden">
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                            <label class="block text-sm text-gray-300 mb-2">GitHub 仓库</label>
+                            <input id="githubRepo" type="text" class="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2" placeholder="username/repo"/>
+                        </div>
+                        <div>
+                            <label class="block text-sm text-gray-300 mb-2">保存路径</label>
+                            <input id="githubPath" type="text" class="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2" placeholder="backups/" value="backups/"/>
+                        </div>
+                    </div>
+                    <p class="text-xs text-gray-500 mt-2">请在"备份配置"标签页中设置 GitHub Token</p>
+                </div>
+
+                <!-- 阿里云盘选项 -->
+                <div id="aliyunOptions" class="mt-4 hidden">
+                    <div>
+                        <label class="block text-sm text-gray-300 mb-2">云盘文件夹路径</label>
+                        <input id="aliyunFolder" type="text" class="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2" placeholder="/TradingAgents/backups/" value="/TradingAgents/backups/"/>
+                    </div>
+                    <p class="text-xs text-gray-500 mt-2">请在"备份配置"标签页中设置阿里云盘 Refresh Token</p>
+                </div>
+            </section>
+
+            <!-- 备份进度 -->
+            <div id="backupProgress" class="hidden bg-gray-800/60 border border-gray-700 rounded-xl p-6">
+                <div class="flex items-center justify-between mb-3">
+                    <span class="font-medium">正在备份...</span>
+                    <span id="backupProgressText" class="text-gray-400">0%</span>
+                </div>
+                <div class="w-full bg-gray-700 rounded-full h-2">
+                    <div id="backupProgressBar" class="bg-green-500 h-2 rounded-full transition-all duration-300" style="width: 0%"></div>
                 </div>
             </div>
-            <canvas id="dataChart" height="120"></canvas>
-        </section>
 
-        <section class="bg-gray-800/60 border border-gray-700 rounded-xl p-6">
-            <table class="w-full text-sm">
-                <thead>
-                    <tr class="text-gray-400 border-b border-gray-700">
-                        <th class="text-left py-2">日期</th>
-                        <th class="text-left py-2">开盘</th>
-                        <th class="text-left py-2">最高</th>
-                        <th class="text-left py-2">最低</th>
-                        <th class="text-left py-2">收盘</th>
-                    </tr>
-                </thead>
-                <tbody id="dataTable"></tbody>
-            </table>
-        </section>
+            <!-- 备份历史 -->
+            <section class="bg-gray-800/60 border border-gray-700 rounded-xl p-6">
+                <div class="flex items-center justify-between mb-4">
+                    <h2 class="text-lg font-semibold">备份历史</h2>
+                    <button onclick="loadBackupHistory()" class="px-3 py-1 bg-gray-700 hover:bg-gray-600 rounded-lg text-sm">
+                        刷新
+                    </button>
+                </div>
+                <div class="overflow-x-auto">
+                    <table class="w-full text-sm">
+                        <thead>
+                            <tr class="text-gray-400 border-b border-gray-700">
+                                <th class="text-left py-3">时间</th>
+                                <th class="text-left py-3">类型</th>
+                                <th class="text-left py-3">格式</th>
+                                <th class="text-left py-3">目标</th>
+                                <th class="text-left py-3">大小</th>
+                                <th class="text-left py-3">状态</th>
+                                <th class="text-left py-3">操作</th>
+                            </tr>
+                        </thead>
+                        <tbody id="backupHistoryTable"></tbody>
+                    </table>
+                </div>
+                <div id="noBackupHistory" class="text-center py-8 text-gray-500 hidden">
+                    暂无备份记录
+                </div>
+            </section>
+        </div>
+
+        <!-- 备份配置标签页 -->
+        <div id="content-config" class="space-y-6 hidden">
+            <!-- GitHub 配置 -->
+            <section class="bg-gray-800/60 border border-gray-700 rounded-xl p-6">
+                <div class="flex items-center gap-3 mb-4">
+                    <svg class="w-8 h-8" viewBox="0 0 24 24" fill="currentColor">
+                        <path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/>
+                    </svg>
+                    <h2 class="text-lg font-semibold">GitHub 配置</h2>
+                </div>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-sm text-gray-300 mb-2">Personal Access Token</label>
+                        <input id="githubToken" type="password" class="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2" placeholder="ghp_xxxxxxxxxxxx"/>
+                        <p class="text-xs text-gray-500 mt-1">需要 repo 权限的 token</p>
+                    </div>
+                    <div>
+                        <label class="block text-sm text-gray-300 mb-2">默认仓库</label>
+                        <input id="defaultGithubRepo" type="text" class="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2" placeholder="username/tradingagents-backup"/>
+                    </div>
+                </div>
+                <div class="mt-4 flex gap-3">
+                    <button onclick="saveGithubConfig()" class="px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded-lg">保存配置</button>
+                    <button onclick="testGithubConnection()" class="px-4 py-2 bg-gray-600 hover:bg-gray-700 rounded-lg">测试连接</button>
+                </div>
+            </section>
+
+            <!-- 阿里云盘配置 -->
+            <section class="bg-gray-800/60 border border-gray-700 rounded-xl p-6">
+                <div class="flex items-center gap-3 mb-4">
+                    <svg class="w-8 h-8 text-blue-400" fill="currentColor" viewBox="0 0 24 24">
+                        <path d="M19.35 10.04C18.67 6.59 15.64 4 12 4 9.11 4 6.6 5.64 5.35 8.04 2.34 8.36 0 10.91 0 14c0 3.31 2.69 6 6 6h13c2.76 0 5-2.24 5-5 0-2.64-2.05-4.78-4.65-4.96zM14 13v4h-4v-4H7l5-5 5 5h-3z"/>
+                    </svg>
+                    <h2 class="text-lg font-semibold">阿里云盘配置</h2>
+                </div>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-sm text-gray-300 mb-2">Refresh Token</label>
+                        <input id="aliyunToken" type="password" class="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2" placeholder="阿里云盘 Refresh Token"/>
+                        <p class="text-xs text-gray-500 mt-1">从阿里云盘开放平台获取</p>
+                    </div>
+                    <div>
+                        <label class="block text-sm text-gray-300 mb-2">默认备份文件夹</label>
+                        <input id="defaultAliyunFolder" type="text" class="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2" placeholder="/TradingAgents/backups/" value="/TradingAgents/backups/"/>
+                    </div>
+                </div>
+                <div class="mt-4 flex gap-3">
+                    <button onclick="saveAliyunConfig()" class="px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded-lg">保存配置</button>
+                    <button onclick="testAliyunConnection()" class="px-4 py-2 bg-gray-600 hover:bg-gray-700 rounded-lg">测试连接</button>
+                </div>
+            </section>
+
+            <!-- 自动备份设置 -->
+            <section class="bg-gray-800/60 border border-gray-700 rounded-xl p-6">
+                <div class="flex items-center gap-3 mb-4">
+                    <svg class="w-8 h-8 text-yellow-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                    </svg>
+                    <h2 class="text-lg font-semibold">自动备份设置</h2>
+                </div>
+                <div class="space-y-4">
+                    <div class="flex items-center justify-between p-4 bg-gray-700/50 rounded-lg">
+                        <div>
+                            <h3 class="font-medium">每周自动备份</h3>
+                            <p class="text-sm text-gray-400">每周日凌晨2点自动创建完整备份</p>
+                        </div>
+                        <label class="relative inline-flex items-center cursor-pointer">
+                            <input type="checkbox" id="autoBackupEnabled" class="sr-only peer" checked>
+                            <div class="w-11 h-6 bg-gray-600 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-green-600"></div>
+                        </label>
+                    </div>
+                    <div class="flex items-center justify-between p-4 bg-gray-700/50 rounded-lg">
+                        <div>
+                            <h3 class="font-medium">自动备份到 GitHub</h3>
+                            <p class="text-sm text-gray-400">自动备份时同时上传到 GitHub</p>
+                        </div>
+                        <label class="relative inline-flex items-center cursor-pointer">
+                            <input type="checkbox" id="autoGithubBackup" class="sr-only peer">
+                            <div class="w-11 h-6 bg-gray-600 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-green-600"></div>
+                        </label>
+                    </div>
+                </div>
+                <div class="mt-4">
+                    <button onclick="saveAutoBackupSettings()" class="px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded-lg">保存设置</button>
+                </div>
+            </section>
+
+            <!-- 调度器状态 -->
+            <section class="bg-gray-800/60 border border-gray-700 rounded-xl p-6">
+                <div class="flex items-center justify-between mb-4">
+                    <h2 class="text-lg font-semibold">调度器状态</h2>
+                    <button onclick="loadSchedulerStatus()" class="px-3 py-1 bg-gray-700 hover:bg-gray-600 rounded-lg text-sm">刷新</button>
+                </div>
+                <div id="schedulerStatus" class="space-y-2"></div>
+            </section>
+        </div>
+    </div>
+
+    <!-- 恢复数据模态框 -->
+    <div id="restoreModal" class="fixed inset-0 bg-black/70 flex items-center justify-center z-50 hidden">
+        <div class="bg-gray-800 rounded-xl p-6 max-w-md w-full mx-4">
+            <div class="flex items-center justify-between mb-4">
+                <h3 class="text-xl font-semibold">恢复数据</h3>
+                <button onclick="closeRestoreModal()" class="text-gray-400 hover:text-white">
+                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                    </svg>
+                </button>
+            </div>
+
+            <div class="space-y-4">
+                <div>
+                    <label class="block text-sm text-gray-300 mb-2">恢复方式</label>
+                    <select id="restoreMethod" class="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2" onchange="toggleRestoreOptions()">
+                        <option value="file">上传备份文件</option>
+                        <option value="history">从历史备份恢复</option>
+                    </select>
+                </div>
+
+                <div id="restoreFileOption">
+                    <label class="block text-sm text-gray-300 mb-2">选择备份文件</label>
+                    <input type="file" id="restoreFile" accept=".json,.db" class="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2"/>
+                </div>
+
+                <div id="restoreHistoryOption" class="hidden">
+                    <label class="block text-sm text-gray-300 mb-2">选择备份记录</label>
+                    <select id="restoreBackupId" class="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2">
+                        <option value="">请选择...</option>
+                    </select>
+                </div>
+
+                <div class="p-3 bg-yellow-900/30 border border-yellow-700 rounded-lg">
+                    <p class="text-sm text-yellow-300">
+                        <strong>注意：</strong>恢复操作将导入备份数据，现有数据不会被删除，但可能会有冲突。
+                    </p>
+                </div>
+
+                <div class="flex gap-3">
+                    <button onclick="executeRestore()" class="flex-1 px-4 py-2 bg-purple-600 hover:bg-purple-700 rounded-lg">
+                        开始恢复
+                    </button>
+                    <button onclick="closeRestoreModal()" class="flex-1 px-4 py-2 bg-gray-600 hover:bg-gray-700 rounded-lg">
+                        取消
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 操作结果提示 -->
+    <div id="toast" class="fixed bottom-6 right-6 bg-gray-800 border border-gray-700 rounded-lg p-4 shadow-lg hidden z-50">
+        <div class="flex items-center gap-3">
+            <span id="toastIcon"></span>
+            <span id="toastMessage"></span>
+        </div>
     </div>
 
     <script>
         let dataChart;
+        let backupConfig = {
+            github: { token: '', repo: '' },
+            aliyun: { token: '', folder: '/TradingAgents/backups/' }
+        };
 
+        // 标签页切换
+        function switchTab(tabName) {
+            document.querySelectorAll('[id^="content-"]').forEach(el => el.classList.add('hidden'));
+            document.querySelectorAll('[id^="tab-"]').forEach(el => {
+                el.classList.remove('border-blue-500', 'text-blue-400');
+                el.classList.add('border-transparent', 'text-gray-400');
+            });
+
+            document.getElementById(`content-${tabName}`).classList.remove('hidden');
+            document.getElementById(`tab-${tabName}`).classList.remove('border-transparent', 'text-gray-400');
+            document.getElementById(`tab-${tabName}`).classList.add('border-blue-500', 'text-blue-400');
+
+            if (tabName === 'backup') {
+                loadBackupHistory();
+            } else if (tabName === 'config') {
+                loadSchedulerStatus();
+            }
+        }
+
+        // 目标位置选项切换
+        function toggleDestinationOptions() {
+            const dest = document.getElementById('backupDestination').value;
+            document.getElementById('localOptions').classList.toggle('hidden', dest !== 'local');
+            document.getElementById('githubOptions').classList.toggle('hidden', dest !== 'github');
+            document.getElementById('aliyunOptions').classList.toggle('hidden', dest !== 'aliyun_drive');
+        }
+
+        // 恢复选项切换
+        function toggleRestoreOptions() {
+            const method = document.getElementById('restoreMethod').value;
+            document.getElementById('restoreFileOption').classList.toggle('hidden', method !== 'file');
+            document.getElementById('restoreHistoryOption').classList.toggle('hidden', method !== 'history');
+
+            if (method === 'history') {
+                loadBackupHistoryForRestore();
+            }
+        }
+
+        // 数据源
         async function loadSources() {
             const res = await fetch("/api/data/sources");
             const data = await res.json();
@@ -79,6 +425,7 @@
             list.innerHTML = data.sources.map(s => `<li>${s.name} - ${s.coverage}</li>`).join("");
         }
 
+        // 获取数据
         async function fetchData() {
             const payload = {
                 ticker: document.getElementById("dataTicker").value.trim(),
@@ -117,8 +464,379 @@
             });
         }
 
+        // 创建备份
+        async function createBackup() {
+            const backupType = document.getElementById('backupType').value;
+            const format = document.getElementById('backupFormat').value;
+            const destination = document.getElementById('backupDestination').value;
+
+            const payload = {
+                backup_type: backupType,
+                format: format,
+                destination: destination
+            };
+
+            if (destination === 'local') {
+                const customPath = document.getElementById('customPath').value.trim();
+                if (customPath) payload.custom_path = customPath;
+            } else if (destination === 'github') {
+                payload.github_config = {
+                    token: backupConfig.github.token || document.getElementById('githubToken').value,
+                    repo: document.getElementById('githubRepo').value || backupConfig.github.repo,
+                    path: document.getElementById('githubPath').value
+                };
+            } else if (destination === 'aliyun_drive') {
+                payload.aliyun_config = {
+                    refresh_token: backupConfig.aliyun.token || document.getElementById('aliyunToken').value,
+                    folder: document.getElementById('aliyunFolder').value
+                };
+            }
+
+            // 显示进度
+            document.getElementById('backupProgress').classList.remove('hidden');
+            updateProgress(10);
+
+            try {
+                const res = await fetch('/api/backup/create', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+
+                updateProgress(50);
+
+                const data = await res.json();
+
+                if (data.success || data.file_path) {
+                    updateProgress(100);
+                    setTimeout(() => {
+                        document.getElementById('backupProgress').classList.add('hidden');
+                        showToast('success', `备份成功！文件: ${data.file_path || '已保存'}`);
+                        loadBackupHistory();
+                    }, 500);
+                } else {
+                    document.getElementById('backupProgress').classList.add('hidden');
+                    showToast('error', `备份失败: ${data.error || '未知错误'}`);
+                }
+            } catch (e) {
+                document.getElementById('backupProgress').classList.add('hidden');
+                showToast('error', `备份失败: ${e.message}`);
+            }
+        }
+
+        function updateProgress(percent) {
+            document.getElementById('backupProgressBar').style.width = `${percent}%`;
+            document.getElementById('backupProgressText').textContent = `${percent}%`;
+        }
+
+        // 快速备份
+        function showQuickBackup() {
+            switchTab('backup');
+            document.getElementById('backupType').value = 'full';
+            document.getElementById('backupFormat').value = 'json';
+            document.getElementById('backupDestination').value = 'local';
+            toggleDestinationOptions();
+        }
+
+        // 加载备份历史
+        async function loadBackupHistory() {
+            try {
+                const res = await fetch('/api/backup/history');
+                const data = await res.json();
+                const history = data.history || [];
+
+                const table = document.getElementById('backupHistoryTable');
+                const noHistory = document.getElementById('noBackupHistory');
+
+                if (history.length === 0) {
+                    table.innerHTML = '';
+                    noHistory.classList.remove('hidden');
+                    return;
+                }
+
+                noHistory.classList.add('hidden');
+                table.innerHTML = history.map(b => `
+                    <tr class="border-b border-gray-800 hover:bg-gray-700/50">
+                        <td class="py-3">${formatDate(b.created_at)}</td>
+                        <td class="py-3">${getBackupTypeLabel(b.backup_type)}</td>
+                        <td class="py-3"><span class="px-2 py-1 bg-gray-700 rounded text-xs">${b.format?.toUpperCase() || 'JSON'}</span></td>
+                        <td class="py-3">${getDestinationLabel(b.destination)}</td>
+                        <td class="py-3">${b.file_size || '-'}</td>
+                        <td class="py-3">${getStatusBadge(b.status)}</td>
+                        <td class="py-3">
+                            ${b.status === 'completed' && b.destination === 'local' ?
+                                `<button onclick="downloadBackup(${b.id})" class="px-2 py-1 bg-blue-600 hover:bg-blue-700 rounded text-xs">下载</button>` :
+                                '-'
+                            }
+                        </td>
+                    </tr>
+                `).join('');
+            } catch (e) {
+                console.error('加载备份历史失败:', e);
+            }
+        }
+
+        function getBackupTypeLabel(type) {
+            const labels = {
+                'full': '完整备份',
+                'strategies_only': '策略数据',
+                'user_data': '用户数据',
+                'trades_only': '交易记录',
+                'stock_library': '股票适配库'
+            };
+            return labels[type] || type;
+        }
+
+        function getDestinationLabel(dest) {
+            const labels = {
+                'local': '本地',
+                'github': 'GitHub',
+                'aliyun_drive': '阿里云盘'
+            };
+            return labels[dest] || dest;
+        }
+
+        function getStatusBadge(status) {
+            const badges = {
+                'pending': '<span class="px-2 py-1 bg-yellow-900/50 text-yellow-400 rounded-full text-xs">等待中</span>',
+                'running': '<span class="px-2 py-1 bg-blue-900/50 text-blue-400 rounded-full text-xs">进行中</span>',
+                'completed': '<span class="px-2 py-1 bg-green-900/50 text-green-400 rounded-full text-xs">已完成</span>',
+                'failed': '<span class="px-2 py-1 bg-red-900/50 text-red-400 rounded-full text-xs">失败</span>'
+            };
+            return badges[status] || status;
+        }
+
+        function formatDate(dateStr) {
+            if (!dateStr) return '-';
+            const date = new Date(dateStr);
+            return date.toLocaleString('zh-CN');
+        }
+
+        // 下载备份
+        async function downloadBackup(backupId) {
+            try {
+                const res = await fetch(`/api/backup/${backupId}/download`);
+                const data = await res.json();
+
+                if (data.success && data.file_path) {
+                    showToast('success', `备份文件路径: ${data.file_path}`);
+                } else {
+                    showToast('error', data.error || '下载失败');
+                }
+            } catch (e) {
+                showToast('error', '下载失败');
+            }
+        }
+
+        // 恢复模态框
+        function showRestoreModal() {
+            document.getElementById('restoreModal').classList.remove('hidden');
+        }
+
+        function closeRestoreModal() {
+            document.getElementById('restoreModal').classList.add('hidden');
+        }
+
+        async function loadBackupHistoryForRestore() {
+            try {
+                const res = await fetch('/api/backup/history');
+                const data = await res.json();
+                const history = (data.history || []).filter(b => b.status === 'completed' && b.destination === 'local');
+
+                const select = document.getElementById('restoreBackupId');
+                select.innerHTML = '<option value="">请选择...</option>' +
+                    history.map(b => `<option value="${b.id}">${formatDate(b.created_at)} - ${getBackupTypeLabel(b.backup_type)}</option>`).join('');
+            } catch (e) {
+                console.error('加载备份历史失败:', e);
+            }
+        }
+
+        async function executeRestore() {
+            const method = document.getElementById('restoreMethod').value;
+
+            if (method === 'file') {
+                const fileInput = document.getElementById('restoreFile');
+                if (!fileInput.files.length) {
+                    showToast('error', '请选择备份文件');
+                    return;
+                }
+
+                const formData = new FormData();
+                formData.append('file', fileInput.files[0]);
+
+                try {
+                    const res = await fetch('/api/backup/restore', {
+                        method: 'POST',
+                        body: formData
+                    });
+                    const data = await res.json();
+
+                    if (data.success) {
+                        showToast('success', '数据恢复成功！');
+                        closeRestoreModal();
+                    } else {
+                        showToast('error', data.error || '恢复失败');
+                    }
+                } catch (e) {
+                    showToast('error', '恢复失败: ' + e.message);
+                }
+            } else {
+                const backupId = document.getElementById('restoreBackupId').value;
+                if (!backupId) {
+                    showToast('error', '请选择备份记录');
+                    return;
+                }
+
+                try {
+                    const res = await fetch(`/api/backup/${backupId}/restore`, {
+                        method: 'POST'
+                    });
+                    const data = await res.json();
+
+                    if (data.success) {
+                        showToast('success', '数据恢复成功！');
+                        closeRestoreModal();
+                    } else {
+                        showToast('error', data.error || '恢复失败');
+                    }
+                } catch (e) {
+                    showToast('error', '恢复失败: ' + e.message);
+                }
+            }
+        }
+
+        // 配置保存
+        function saveGithubConfig() {
+            backupConfig.github.token = document.getElementById('githubToken').value;
+            backupConfig.github.repo = document.getElementById('defaultGithubRepo').value;
+            localStorage.setItem('backupConfig', JSON.stringify(backupConfig));
+            showToast('success', 'GitHub 配置已保存');
+        }
+
+        function saveAliyunConfig() {
+            backupConfig.aliyun.token = document.getElementById('aliyunToken').value;
+            backupConfig.aliyun.folder = document.getElementById('defaultAliyunFolder').value;
+            localStorage.setItem('backupConfig', JSON.stringify(backupConfig));
+            showToast('success', '阿里云盘配置已保存');
+        }
+
+        function saveAutoBackupSettings() {
+            const settings = {
+                autoBackupEnabled: document.getElementById('autoBackupEnabled').checked,
+                autoGithubBackup: document.getElementById('autoGithubBackup').checked
+            };
+            localStorage.setItem('autoBackupSettings', JSON.stringify(settings));
+            showToast('success', '自动备份设置已保存');
+        }
+
+        async function testGithubConnection() {
+            const token = document.getElementById('githubToken').value || backupConfig.github.token;
+            if (!token) {
+                showToast('error', '请先填写 GitHub Token');
+                return;
+            }
+            showToast('info', 'GitHub 连接测试功能待实现');
+        }
+
+        async function testAliyunConnection() {
+            const token = document.getElementById('aliyunToken').value || backupConfig.aliyun.token;
+            if (!token) {
+                showToast('error', '请先填写阿里云盘 Token');
+                return;
+            }
+            showToast('info', '阿里云盘连接测试功能待实现');
+        }
+
+        // 加载调度器状态
+        async function loadSchedulerStatus() {
+            try {
+                const res = await fetch('/api/scheduler/status');
+                const data = await res.json();
+
+                const container = document.getElementById('schedulerStatus');
+                const jobs = data.jobs || [];
+
+                if (jobs.length === 0) {
+                    container.innerHTML = '<p class="text-gray-500">暂无调度任务</p>';
+                    return;
+                }
+
+                container.innerHTML = `
+                    <div class="flex items-center gap-2 mb-4">
+                        <span class="w-3 h-3 rounded-full ${data.running ? 'bg-green-500' : 'bg-red-500'}"></span>
+                        <span>${data.running ? '调度器运行中' : '调度器未运行'}</span>
+                    </div>
+                    ${jobs.map(job => `
+                        <div class="p-3 bg-gray-700/50 rounded-lg">
+                            <div class="flex justify-between items-center">
+                                <span class="font-medium">${job.job_id}</span>
+                                <span class="text-sm text-gray-400">间隔: ${formatInterval(job.interval_seconds)}</span>
+                            </div>
+                            <div class="text-sm text-gray-400 mt-1">
+                                上次运行: ${job.last_run ? formatDate(job.last_run) : '未运行'}
+                            </div>
+                            <div class="text-sm text-gray-400">
+                                下次运行: ${job.next_run ? formatDate(job.next_run) : '-'}
+                            </div>
+                        </div>
+                    `).join('')}
+                `;
+            } catch (e) {
+                document.getElementById('schedulerStatus').innerHTML = '<p class="text-red-400">加载失败</p>';
+            }
+        }
+
+        function formatInterval(seconds) {
+            if (seconds >= 86400) return `${Math.round(seconds / 86400)} 天`;
+            if (seconds >= 3600) return `${Math.round(seconds / 3600)} 小时`;
+            if (seconds >= 60) return `${Math.round(seconds / 60)} 分钟`;
+            return `${seconds} 秒`;
+        }
+
+        // Toast 提示
+        function showToast(type, message) {
+            const toast = document.getElementById('toast');
+            const icon = document.getElementById('toastIcon');
+            const msg = document.getElementById('toastMessage');
+
+            const icons = {
+                success: '<svg class="w-6 h-6 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>',
+                error: '<svg class="w-6 h-6 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>',
+                info: '<svg class="w-6 h-6 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>'
+            };
+
+            icon.innerHTML = icons[type] || icons.info;
+            msg.textContent = message;
+
+            toast.classList.remove('hidden');
+            setTimeout(() => toast.classList.add('hidden'), 4000);
+        }
+
+        // 加载保存的配置
+        function loadSavedConfig() {
+            const saved = localStorage.getItem('backupConfig');
+            if (saved) {
+                backupConfig = JSON.parse(saved);
+                if (backupConfig.github.repo) {
+                    document.getElementById('defaultGithubRepo').value = backupConfig.github.repo;
+                }
+                if (backupConfig.aliyun.folder) {
+                    document.getElementById('defaultAliyunFolder').value = backupConfig.aliyun.folder;
+                }
+            }
+
+            const autoSettings = localStorage.getItem('autoBackupSettings');
+            if (autoSettings) {
+                const settings = JSON.parse(autoSettings);
+                document.getElementById('autoBackupEnabled').checked = settings.autoBackupEnabled;
+                document.getElementById('autoGithubBackup').checked = settings.autoGithubBackup;
+            }
+        }
+
+        // 初始化
         document.getElementById("fetchBtn").addEventListener("click", fetchData);
         loadSources();
+        loadSavedConfig();
     </script>
 </body>
 </html>

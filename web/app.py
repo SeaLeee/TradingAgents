@@ -3058,6 +3058,592 @@ def get_strategies_html():
 """
 
 
+# ==================== 批量回测 API ====================
+
+from pydantic import BaseModel as PydanticBaseModel
+
+
+class BatchBacktestRequest(PydanticBaseModel):
+    ticker: str
+    start_date: str
+    end_date: str
+    initial_capital: float = 100000
+    trading_frequency: str = "daily"  # daily, monthly
+
+
+@app.post("/api/backtest/batch")
+async def start_batch_backtest_endpoint(request: Request, data: BatchBacktestRequest):
+    """启动批量回测任务"""
+    token = get_session_token(request)
+    if not verify_session(token):
+        raise HTTPException(status_code=401, detail="Not authenticated")
+
+    current_user = get_current_user(request)
+    if not current_user or current_user.get("id", 0) <= 0:
+        raise HTTPException(status_code=403, detail="请先登录")
+
+    user_id = current_user["id"]
+
+    from .batch_backtest_service import start_batch_backtest, execute_batch_backtest
+
+    # 创建任务
+    job = start_batch_backtest(
+        user_id=user_id,
+        ticker=data.ticker,
+        start_date=data.start_date,
+        end_date=data.end_date,
+        initial_capital=data.initial_capital,
+        trading_frequency=data.trading_frequency
+    )
+
+    # 在后台线程执行
+    import threading
+    thread = threading.Thread(target=execute_batch_backtest, args=(job.id,))
+    thread.start()
+
+    return {"job_id": job.id, "message": "批量回测已启动"}
+
+
+@app.get("/api/backtest/batch/{job_id}")
+async def get_batch_backtest_status(request: Request, job_id: int):
+    """查询批量回测任务状态和结果"""
+    token = get_session_token(request)
+    if not verify_session(token):
+        raise HTTPException(status_code=401, detail="Not authenticated")
+
+    from .batch_backtest_service import get_batch_backtest_summary
+    from .database import get_batch_backtest_job
+
+    with get_db() as db:
+        job = get_batch_backtest_job(db, job_id)
+        if not job:
+            raise HTTPException(status_code=404, detail="任务不存在")
+
+        summary = get_batch_backtest_summary(job)
+        return summary
+
+
+@app.get("/api/backtest/batch/history")
+async def get_batch_backtest_history(request: Request):
+    """获取批量回测历史"""
+    token = get_session_token(request)
+    if not verify_session(token):
+        raise HTTPException(status_code=401, detail="Not authenticated")
+
+    current_user = get_current_user(request)
+    if not current_user or current_user.get("id", 0) <= 0:
+        raise HTTPException(status_code=403, detail="请先登录")
+
+    user_id = current_user["id"]
+
+    from .database import get_user_batch_backtest_jobs
+
+    with get_db() as db:
+        jobs = get_user_batch_backtest_jobs(db, user_id)
+        return {"jobs": [j.to_dict() for j in jobs]}
+
+
+# ==================== AI模拟交易 API ====================
+
+class SimulationStartRequest(PydanticBaseModel):
+    ticker: str
+    strategy_id: int
+    duration_days: int = 14
+    initial_capital: float = 100000
+    check_interval: str = "daily"
+
+
+@app.post("/api/simulation/start")
+async def start_simulation_endpoint(request: Request, data: SimulationStartRequest):
+    """启动AI模拟交易"""
+    token = get_session_token(request)
+    if not verify_session(token):
+        raise HTTPException(status_code=401, detail="Not authenticated")
+
+    current_user = get_current_user(request)
+    if not current_user or current_user.get("id", 0) <= 0:
+        raise HTTPException(status_code=403, detail="请先登录")
+
+    user_id = current_user["id"]
+
+    from .ai_simulation_service import start_simulation
+
+    try:
+        session = start_simulation(
+            user_id=user_id,
+            ticker=data.ticker,
+            strategy_id=data.strategy_id,
+            duration_days=data.duration_days,
+            initial_capital=data.initial_capital,
+            check_interval=data.check_interval
+        )
+        return {"session_id": session.id, "message": "模拟交易已启动"}
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@app.get("/api/simulation/{session_id}")
+async def get_simulation_status(request: Request, session_id: int):
+    """查询模拟交易会话状态"""
+    token = get_session_token(request)
+    if not verify_session(token):
+        raise HTTPException(status_code=401, detail="Not authenticated")
+
+    from .ai_simulation_service import calculate_session_statistics
+    from .database import get_ai_simulation_session, get_strategy_by_id
+
+    with get_db() as db:
+        session = get_ai_simulation_session(db, session_id)
+        if not session:
+            raise HTTPException(status_code=404, detail="会话不存在")
+
+        strategy = get_strategy_by_id(db, session.strategy_id)
+
+        stats = calculate_session_statistics(session)
+        result = session.to_dict()
+        result["strategy_name"] = strategy.name if strategy else None
+        result["statistics"] = stats
+
+        return result
+
+
+@app.post("/api/simulation/{session_id}/check")
+async def trigger_simulation_check(request: Request, session_id: int):
+    """手动触发信号检查"""
+    token = get_session_token(request)
+    if not verify_session(token):
+        raise HTTPException(status_code=401, detail="Not authenticated")
+
+    from .ai_simulation_service import check_signal_and_trade
+
+    result = check_signal_and_trade(session_id)
+    if "error" in result:
+        raise HTTPException(status_code=400, detail=result["error"])
+    return result
+
+
+@app.post("/api/simulation/{session_id}/stop")
+async def stop_simulation_endpoint(request: Request, session_id: int):
+    """停止模拟交易"""
+    token = get_session_token(request)
+    if not verify_session(token):
+        raise HTTPException(status_code=401, detail="Not authenticated")
+
+    from .ai_simulation_service import stop_simulation
+
+    result = stop_simulation(session_id)
+    if "error" in result:
+        raise HTTPException(status_code=400, detail=result["error"])
+    return result
+
+
+@app.post("/api/simulation/{session_id}/pause")
+async def pause_simulation_endpoint(request: Request, session_id: int):
+    """暂停模拟交易"""
+    token = get_session_token(request)
+    if not verify_session(token):
+        raise HTTPException(status_code=401, detail="Not authenticated")
+
+    from .ai_simulation_service import pause_simulation
+
+    result = pause_simulation(session_id)
+    if "error" in result:
+        raise HTTPException(status_code=400, detail=result["error"])
+    return result
+
+
+@app.post("/api/simulation/{session_id}/resume")
+async def resume_simulation_endpoint(request: Request, session_id: int):
+    """恢复模拟交易"""
+    token = get_session_token(request)
+    if not verify_session(token):
+        raise HTTPException(status_code=401, detail="Not authenticated")
+
+    from .ai_simulation_service import resume_simulation
+
+    result = resume_simulation(session_id)
+    if "error" in result:
+        raise HTTPException(status_code=400, detail=result["error"])
+    return result
+
+
+@app.post("/api/simulation/{session_id}/qualify")
+async def qualify_simulation_endpoint(request: Request, session_id: int):
+    """手动将策略加入股票适配库"""
+    token = get_session_token(request)
+    if not verify_session(token):
+        raise HTTPException(status_code=401, detail="Not authenticated")
+
+    from .ai_simulation_service import manual_qualify_for_library
+
+    result = manual_qualify_for_library(session_id)
+    if "error" in result:
+        raise HTTPException(status_code=400, detail=result["error"])
+    return result
+
+
+@app.get("/api/simulations")
+async def list_simulations(request: Request, status: Optional[str] = None):
+    """获取所有模拟交易会话"""
+    token = get_session_token(request)
+    if not verify_session(token):
+        raise HTTPException(status_code=401, detail="Not authenticated")
+
+    current_user = get_current_user(request)
+    if not current_user or current_user.get("id", 0) <= 0:
+        raise HTTPException(status_code=403, detail="请先登录")
+
+    user_id = current_user["id"]
+
+    from .database import get_user_ai_simulation_sessions
+
+    with get_db() as db:
+        sessions = get_user_ai_simulation_sessions(db, user_id, status)
+        return {"sessions": [s.to_dict() for s in sessions]}
+
+
+# ==================== 股票策略适配库 API ====================
+
+@app.get("/api/stock-library")
+async def get_stock_library_endpoint(request: Request):
+    """获取股票策略适配库"""
+    token = get_session_token(request)
+    if not verify_session(token):
+        raise HTTPException(status_code=401, detail="Not authenticated")
+
+    current_user = get_current_user(request)
+    if not current_user or current_user.get("id", 0) <= 0:
+        raise HTTPException(status_code=403, detail="请先登录")
+
+    user_id = current_user["id"]
+
+    from .stock_library_service import get_stock_library
+
+    stocks = get_stock_library(user_id)
+    return {"stocks": stocks}
+
+
+@app.get("/api/stock-library/{ticker}")
+async def get_stock_detail_endpoint(request: Request, ticker: str):
+    """获取单只股票详情"""
+    token = get_session_token(request)
+    if not verify_session(token):
+        raise HTTPException(status_code=401, detail="Not authenticated")
+
+    current_user = get_current_user(request)
+    if not current_user or current_user.get("id", 0) <= 0:
+        raise HTTPException(status_code=403, detail="请先登录")
+
+    user_id = current_user["id"]
+
+    from .stock_library_service import get_stock_detail
+
+    detail = get_stock_detail(user_id, ticker)
+    return detail
+
+
+@app.post("/api/stock-library/{ticker}/analyze")
+async def analyze_stock_endpoint(request: Request, ticker: str):
+    """分析股票性格"""
+    token = get_session_token(request)
+    if not verify_session(token):
+        raise HTTPException(status_code=401, detail="Not authenticated")
+
+    current_user = get_current_user(request)
+    user_id = current_user["id"] if current_user else None
+
+    from .stock_library_service import save_stock_personality
+
+    result = save_stock_personality(ticker, user_id)
+    if "error" in result:
+        raise HTTPException(status_code=400, detail=result["error"])
+    return result
+
+
+@app.get("/api/stock-library/{ticker}/personality")
+async def get_stock_personality_endpoint(request: Request, ticker: str):
+    """获取股票性格"""
+    token = get_session_token(request)
+    if not verify_session(token):
+        raise HTTPException(status_code=401, detail="Not authenticated")
+
+    from .database import get_stock_personality
+
+    with get_db() as db:
+        personality = get_stock_personality(db, ticker)
+        if not personality:
+            raise HTTPException(status_code=404, detail="未找到该股票的性格分析")
+        return personality.to_dict()
+
+
+@app.get("/api/stock-library/{ticker}/best-strategies")
+async def get_best_strategies_endpoint(request: Request, ticker: str, limit: int = 5):
+    """获取最适合该股票的策略"""
+    token = get_session_token(request)
+    if not verify_session(token):
+        raise HTTPException(status_code=401, detail="Not authenticated")
+
+    current_user = get_current_user(request)
+    user_id = current_user["id"] if current_user else None
+
+    from .stock_library_service import get_best_strategies_for_stock
+
+    strategies = get_best_strategies_for_stock(ticker, user_id, limit)
+    return {"strategies": strategies}
+
+
+class AddStrategyMatchRequest(PydanticBaseModel):
+    strategy_id: int
+    backtest_id: Optional[int] = None
+    simulation_id: Optional[int] = None
+    win_rate: Optional[float] = None
+    total_return: Optional[float] = None
+
+
+@app.post("/api/stock-library/{ticker}/add-strategy")
+async def add_strategy_match_endpoint(request: Request, ticker: str, data: AddStrategyMatchRequest):
+    """添加策略匹配"""
+    token = get_session_token(request)
+    if not verify_session(token):
+        raise HTTPException(status_code=401, detail="Not authenticated")
+
+    current_user = get_current_user(request)
+    if not current_user or current_user.get("id", 0) <= 0:
+        raise HTTPException(status_code=403, detail="请先登录")
+
+    user_id = current_user["id"]
+
+    from .stock_library_service import add_strategy_match
+
+    metrics = {}
+    if data.win_rate is not None:
+        metrics["win_rate"] = data.win_rate
+    if data.total_return is not None:
+        metrics["total_return"] = data.total_return
+
+    result = add_strategy_match(
+        user_id=user_id,
+        ticker=ticker,
+        strategy_id=data.strategy_id,
+        backtest_id=data.backtest_id,
+        simulation_id=data.simulation_id,
+        metrics=metrics if metrics else None
+    )
+
+    if "error" in result:
+        raise HTTPException(status_code=400, detail=result["error"])
+    return result
+
+
+@app.delete("/api/stock-library/{ticker}/strategy/{strategy_id}")
+async def remove_strategy_match_endpoint(request: Request, ticker: str, strategy_id: int):
+    """移除策略匹配"""
+    token = get_session_token(request)
+    if not verify_session(token):
+        raise HTTPException(status_code=401, detail="Not authenticated")
+
+    current_user = get_current_user(request)
+    if not current_user or current_user.get("id", 0) <= 0:
+        raise HTTPException(status_code=403, detail="请先登录")
+
+    user_id = current_user["id"]
+
+    from .stock_library_service import remove_strategy_match
+
+    result = remove_strategy_match(user_id, ticker, strategy_id)
+    if "error" in result:
+        raise HTTPException(status_code=400, detail=result["error"])
+    return result
+
+
+# ==================== 数据库备份 API ====================
+
+class BackupCreateRequest(PydanticBaseModel):
+    backup_type: str = "full"  # full, strategies_only, user_data, trades_only
+    format: str = "json"  # json, sqlite
+    destination: str = "local"  # local, github, aliyun_drive
+    custom_path: Optional[str] = None
+    github_token: Optional[str] = None
+    github_repo: Optional[str] = None
+    github_path: Optional[str] = None
+    aliyun_refresh_token: Optional[str] = None
+    aliyun_folder: Optional[str] = None
+
+
+@app.post("/api/backup/create")
+async def create_backup_endpoint(request: Request, data: BackupCreateRequest):
+    """创建数据库备份"""
+    token = get_session_token(request)
+    if not verify_session(token):
+        raise HTTPException(status_code=401, detail="Not authenticated")
+
+    current_user = get_current_user(request)
+    user_id = current_user["id"] if current_user else None
+
+    from .backup_service import create_backup
+
+    github_config = None
+    if data.destination == "github" and data.github_token:
+        github_config = {
+            "token": data.github_token,
+            "repo": data.github_repo,
+            "path": data.github_path or "backups/"
+        }
+
+    aliyun_config = None
+    if data.destination == "aliyun_drive" and data.aliyun_refresh_token:
+        aliyun_config = {
+            "refresh_token": data.aliyun_refresh_token,
+            "folder": data.aliyun_folder or "/TradingAgents/backups/"
+        }
+
+    result = create_backup(
+        backup_type=data.backup_type,
+        format=data.format,
+        destination=data.destination,
+        user_id=user_id,
+        custom_path=data.custom_path,
+        github_config=github_config,
+        aliyun_config=aliyun_config
+    )
+
+    if "error" in result:
+        raise HTTPException(status_code=400, detail=result["error"])
+    return result
+
+
+@app.get("/api/backup/{backup_id}")
+async def get_backup_status(request: Request, backup_id: int):
+    """查询备份状态"""
+    token = get_session_token(request)
+    if not verify_session(token):
+        raise HTTPException(status_code=401, detail="Not authenticated")
+
+    from .database import get_backup_records
+
+    with get_db() as db:
+        record = db.query(BackupRecord).filter(BackupRecord.id == backup_id).first()
+        if not record:
+            raise HTTPException(status_code=404, detail="备份记录不存在")
+        return record.to_dict()
+
+
+@app.get("/api/backup/history")
+async def get_backup_history_endpoint(request: Request):
+    """获取备份历史"""
+    token = get_session_token(request)
+    if not verify_session(token):
+        raise HTTPException(status_code=401, detail="Not authenticated")
+
+    current_user = get_current_user(request)
+    user_id = current_user["id"] if current_user else None
+
+    from .backup_service import get_backup_history
+
+    history = get_backup_history(user_id)
+    return {"backups": history}
+
+
+class RestoreRequest(PydanticBaseModel):
+    source: str = "local"  # local, upload
+    file_path: Optional[str] = None
+    restore_type: str = "full"  # full, strategies_only, merge
+
+
+@app.post("/api/backup/restore")
+async def restore_backup_endpoint(request: Request, data: RestoreRequest):
+    """恢复数据库"""
+    token = get_session_token(request)
+    if not verify_session(token):
+        raise HTTPException(status_code=401, detail="Not authenticated")
+
+    current_user = get_current_user(request)
+    if not current_user or not current_user.get("is_admin"):
+        raise HTTPException(status_code=403, detail="需要管理员权限")
+
+    from .backup_service import restore_from_json, restore_from_sqlite
+    import json as json_module
+
+    if data.source == "local" and data.file_path:
+        if data.file_path.endswith('.json'):
+            with open(data.file_path, 'r', encoding='utf-8') as f:
+                json_data = json_module.load(f)
+            result = restore_from_json(json_data, data.restore_type)
+        elif data.file_path.endswith('.db'):
+            result = restore_from_sqlite(data.file_path)
+        else:
+            raise HTTPException(status_code=400, detail="不支持的文件格式")
+
+        if "error" in result:
+            raise HTTPException(status_code=400, detail=result["error"])
+        return result
+    else:
+        raise HTTPException(status_code=400, detail="请提供有效的文件路径")
+
+
+@app.get("/api/backup/download/{backup_id}")
+async def download_backup_endpoint(request: Request, backup_id: int):
+    """下载备份文件"""
+    token = get_session_token(request)
+    if not verify_session(token):
+        raise HTTPException(status_code=401, detail="Not authenticated")
+
+    from .backup_service import download_backup
+    from fastapi.responses import FileResponse
+
+    result = download_backup(backup_id)
+    if "error" in result:
+        raise HTTPException(status_code=400, detail=result["error"])
+
+    return FileResponse(
+        path=result["file_path"],
+        filename=result["filename"],
+        media_type="application/octet-stream"
+    )
+
+
+# ==================== 股票适配库页面 ====================
+
+@app.get("/stock-library", response_class=HTMLResponse)
+async def stock_library_page(request: Request):
+    """股票策略适配库页面"""
+    token = get_session_token(request)
+    if not verify_session(token):
+        return RedirectResponse(url="/login", status_code=302)
+
+    html_path = os.path.join(os.path.dirname(__file__), "templates", "stock_library.html")
+    if os.path.exists(html_path):
+        with open(html_path, "r", encoding="utf-8") as f:
+            return HTMLResponse(content=f.read())
+    return HTMLResponse(content=get_stock_library_html())
+
+
+def get_stock_library_html():
+    """股票适配库基本页面"""
+    return """
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>股票策略适配库 - TradingAgents</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-900 text-white min-h-screen">
+    <div class="container mx-auto px-4 py-8">
+        <h1 class="text-4xl font-bold text-center mb-8">📚 股票策略适配库</h1>
+        <p class="text-center text-gray-400">页面模板正在加载中...</p>
+        <p class="text-center mt-4"><a href="/dashboard" class="text-blue-400 hover:underline">返回首页</a></p>
+    </div>
+</body>
+</html>
+"""
+
+
+# 导入备份记录模型
+from .database import BackupRecord
+
+
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8000))
     uvicorn.run(app, host="0.0.0.0", port=port)

@@ -1623,6 +1623,621 @@ def init_default_strategies(db):
             )
 
 
+# ==================== Batch Backtest & AI Simulation Models ====================
+
+class BatchBacktestJob(Base):
+    """批量回测任务 - 对某股票执行所有策略的回测"""
+    __tablename__ = "batch_backtest_jobs"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+
+    # 配置
+    ticker = Column(String(20), nullable=False, index=True)
+    start_date = Column(String(20), nullable=False)
+    end_date = Column(String(20), nullable=False)
+    initial_capital = Column(String(50), default="100000")
+    trading_frequency = Column(String(20), default="daily")  # daily, monthly
+
+    # 状态
+    status = Column(String(20), default="pending")  # pending, running, completed, failed
+    progress = Column(Integer, default=0)  # 0-100
+    total_strategies = Column(Integer, default=0)
+    completed_strategies = Column(Integer, default=0)
+
+    # 最佳策略结果
+    best_strategy_id = Column(Integer, ForeignKey("strategies.id"), nullable=True)
+    best_strategy_name = Column(String(200), nullable=True)
+    best_win_rate = Column(String(20), nullable=True)
+    best_total_return = Column(String(20), nullable=True)
+    best_sharpe_ratio = Column(String(20), nullable=True)
+
+    # 全部结果（JSON数组）
+    all_results = Column(Text, nullable=True)
+
+    # 错误信息
+    error_message = Column(Text, nullable=True)
+
+    # 时间戳
+    created_at = Column(DateTime, default=datetime.utcnow)
+    completed_at = Column(DateTime, nullable=True)
+
+    # Relationships
+    user = relationship("User", foreign_keys=[user_id])
+    best_strategy = relationship("Strategy", foreign_keys=[best_strategy_id])
+
+    def __repr__(self):
+        return f"<BatchBacktestJob {self.ticker} by User {self.user_id}>"
+
+    def to_dict(self):
+        import json
+        return {
+            "id": self.id,
+            "user_id": self.user_id,
+            "ticker": self.ticker,
+            "start_date": self.start_date,
+            "end_date": self.end_date,
+            "initial_capital": float(self.initial_capital) if self.initial_capital else 100000,
+            "trading_frequency": self.trading_frequency,
+            "status": self.status,
+            "progress": self.progress,
+            "total_strategies": self.total_strategies,
+            "completed_strategies": self.completed_strategies,
+            "best_strategy_id": self.best_strategy_id,
+            "best_strategy_name": self.best_strategy_name,
+            "best_win_rate": float(self.best_win_rate) if self.best_win_rate else None,
+            "best_total_return": float(self.best_total_return) if self.best_total_return else None,
+            "best_sharpe_ratio": float(self.best_sharpe_ratio) if self.best_sharpe_ratio else None,
+            "all_results": json.loads(self.all_results) if self.all_results else [],
+            "error_message": self.error_message,
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+            "completed_at": self.completed_at.isoformat() if self.completed_at else None,
+        }
+
+
+class AISimulationSession(Base):
+    """AI模拟交易会话 - 对回测好的策略进行模拟交易"""
+    __tablename__ = "ai_simulation_sessions"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+
+    # 关联
+    ticker = Column(String(20), nullable=False, index=True)
+    strategy_id = Column(Integer, ForeignKey("strategies.id"), nullable=False)
+    portfolio_id = Column(Integer, ForeignKey("sim_portfolios.id"), nullable=True)
+
+    # 配置
+    duration_days = Column(Integer, default=14)  # 模拟时长（默认2周）
+    start_date = Column(String(20), nullable=False)
+    end_date = Column(String(20), nullable=True)
+    initial_capital = Column(String(50), default="100000")
+    check_interval = Column(String(20), default="daily")  # daily, hourly
+
+    # 状态
+    status = Column(String(20), default="active")  # active, paused, completed, stopped
+    current_day = Column(Integer, default=0)
+
+    # 持仓
+    current_position = Column(String(20), default="cash")  # cash, long, short
+    shares = Column(Integer, default=0)
+    entry_price = Column(String(50), nullable=True)
+    entry_date = Column(String(20), nullable=True)
+
+    # 统计
+    total_trades = Column(Integer, default=0)
+    winning_trades = Column(Integer, default=0)
+    losing_trades = Column(Integer, default=0)
+    total_pnl = Column(String(50), default="0")
+    current_value = Column(String(50), nullable=True)
+
+    # 交易历史（JSON数组）
+    trade_history = Column(Text, nullable=True)
+    daily_checks = Column(Text, nullable=True)  # 每日信号检查记录
+
+    # 是否合格加入适配库
+    qualified_for_library = Column(Boolean, default=False)
+    qualification_date = Column(DateTime, nullable=True)
+
+    # 时间戳
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    last_check_at = Column(DateTime, nullable=True)
+
+    # Relationships
+    user = relationship("User", foreign_keys=[user_id])
+    strategy = relationship("Strategy", foreign_keys=[strategy_id])
+    portfolio = relationship("SimPortfolio", foreign_keys=[portfolio_id])
+
+    def __repr__(self):
+        return f"<AISimulationSession {self.ticker} Strategy {self.strategy_id}>"
+
+    def to_dict(self):
+        import json
+        return {
+            "id": self.id,
+            "user_id": self.user_id,
+            "ticker": self.ticker,
+            "strategy_id": self.strategy_id,
+            "portfolio_id": self.portfolio_id,
+            "duration_days": self.duration_days,
+            "start_date": self.start_date,
+            "end_date": self.end_date,
+            "initial_capital": float(self.initial_capital) if self.initial_capital else 100000,
+            "check_interval": self.check_interval,
+            "status": self.status,
+            "current_day": self.current_day,
+            "current_position": self.current_position,
+            "shares": self.shares,
+            "entry_price": float(self.entry_price) if self.entry_price else None,
+            "entry_date": self.entry_date,
+            "total_trades": self.total_trades,
+            "winning_trades": self.winning_trades,
+            "losing_trades": self.losing_trades,
+            "total_pnl": float(self.total_pnl) if self.total_pnl else 0,
+            "current_value": float(self.current_value) if self.current_value else None,
+            "win_rate": (self.winning_trades / self.total_trades * 100) if self.total_trades > 0 else 0,
+            "trade_history": json.loads(self.trade_history) if self.trade_history else [],
+            "daily_checks": json.loads(self.daily_checks) if self.daily_checks else [],
+            "qualified_for_library": self.qualified_for_library,
+            "qualification_date": self.qualification_date.isoformat() if self.qualification_date else None,
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+            "updated_at": self.updated_at.isoformat() if self.updated_at else None,
+            "last_check_at": self.last_check_at.isoformat() if self.last_check_at else None,
+        }
+
+
+class StockStrategyMatch(Base):
+    """股票策略适配 - 记录每只股票适合的策略"""
+    __tablename__ = "stock_strategy_matches"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+
+    # 股票信息
+    ticker = Column(String(20), nullable=False, index=True)
+    stock_name = Column(String(200), nullable=True)
+    sector = Column(String(100), nullable=True)
+    industry = Column(String(100), nullable=True)
+
+    # 策略信息
+    strategy_id = Column(Integer, ForeignKey("strategies.id"), nullable=False)
+    strategy_name = Column(String(200), nullable=False)
+    strategy_type = Column(String(50), nullable=False)
+
+    # 验证数据
+    backtest_id = Column(Integer, ForeignKey("backtest_results.id"), nullable=True)
+    simulation_id = Column(Integer, ForeignKey("ai_simulation_sessions.id"), nullable=True)
+
+    # 性能指标
+    backtest_win_rate = Column(String(20), nullable=True)
+    backtest_return = Column(String(20), nullable=True)
+    simulation_win_rate = Column(String(20), nullable=True)
+    simulation_return = Column(String(20), nullable=True)
+
+    # 置信度和评分
+    confidence_score = Column(String(20), nullable=True)  # 0-100
+    match_grade = Column(String(5), nullable=True)  # A, B, C, D
+
+    # 状态
+    is_active = Column(Boolean, default=True)
+    is_recommended = Column(Boolean, default=False)  # 推荐使用
+
+    # 时间戳
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    last_verified_at = Column(DateTime, nullable=True)
+
+    # Relationships
+    user = relationship("User", foreign_keys=[user_id])
+    strategy = relationship("Strategy", foreign_keys=[strategy_id])
+    backtest = relationship("BacktestResult", foreign_keys=[backtest_id])
+    simulation = relationship("AISimulationSession", foreign_keys=[simulation_id])
+
+    def __repr__(self):
+        return f"<StockStrategyMatch {self.ticker} - {self.strategy_name}>"
+
+    def to_dict(self):
+        return {
+            "id": self.id,
+            "user_id": self.user_id,
+            "ticker": self.ticker,
+            "stock_name": self.stock_name,
+            "sector": self.sector,
+            "industry": self.industry,
+            "strategy_id": self.strategy_id,
+            "strategy_name": self.strategy_name,
+            "strategy_type": self.strategy_type,
+            "backtest_id": self.backtest_id,
+            "simulation_id": self.simulation_id,
+            "backtest_win_rate": float(self.backtest_win_rate) if self.backtest_win_rate else None,
+            "backtest_return": float(self.backtest_return) if self.backtest_return else None,
+            "simulation_win_rate": float(self.simulation_win_rate) if self.simulation_win_rate else None,
+            "simulation_return": float(self.simulation_return) if self.simulation_return else None,
+            "confidence_score": float(self.confidence_score) if self.confidence_score else None,
+            "match_grade": self.match_grade,
+            "is_active": self.is_active,
+            "is_recommended": self.is_recommended,
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+            "updated_at": self.updated_at.isoformat() if self.updated_at else None,
+            "last_verified_at": self.last_verified_at.isoformat() if self.last_verified_at else None,
+        }
+
+
+class StockPersonality(Base):
+    """股票性格分析 - 记录股票的交易特征"""
+    __tablename__ = "stock_personalities"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=True)  # None表示系统分析
+
+    # 股票信息
+    ticker = Column(String(20), nullable=False, index=True)
+    stock_name = Column(String(200), nullable=True)
+
+    # 波动性特征
+    volatility_level = Column(String(20), nullable=True)  # low, medium, high, extreme
+    avg_daily_range = Column(String(20), nullable=True)  # 平均日波动幅度
+    beta = Column(String(20), nullable=True)
+
+    # 趋势特征
+    trend_tendency = Column(String(20), nullable=True)  # trending, mean_reverting, random
+    trend_strength = Column(String(20), nullable=True)  # weak, moderate, strong
+
+    # 动量特征
+    momentum_profile = Column(String(20), nullable=True)  # positive, negative, neutral
+    momentum_persistence = Column(String(20), nullable=True)  # low, medium, high
+
+    # 推荐策略类型（JSON数组）
+    recommended_strategies = Column(Text, nullable=True)
+
+    # 不推荐策略类型（JSON数组）
+    avoided_strategies = Column(Text, nullable=True)
+
+    # 分析备注
+    analysis_notes = Column(Text, nullable=True)
+
+    # 时间戳
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    last_analyzed_at = Column(DateTime, nullable=True)
+
+    # Relationships
+    user = relationship("User", foreign_keys=[user_id])
+
+    def __repr__(self):
+        return f"<StockPersonality {self.ticker}>"
+
+    def to_dict(self):
+        import json
+        return {
+            "id": self.id,
+            "user_id": self.user_id,
+            "ticker": self.ticker,
+            "stock_name": self.stock_name,
+            "volatility_level": self.volatility_level,
+            "avg_daily_range": float(self.avg_daily_range) if self.avg_daily_range else None,
+            "beta": float(self.beta) if self.beta else None,
+            "trend_tendency": self.trend_tendency,
+            "trend_strength": self.trend_strength,
+            "momentum_profile": self.momentum_profile,
+            "momentum_persistence": self.momentum_persistence,
+            "recommended_strategies": json.loads(self.recommended_strategies) if self.recommended_strategies else [],
+            "avoided_strategies": json.loads(self.avoided_strategies) if self.avoided_strategies else [],
+            "analysis_notes": self.analysis_notes,
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+            "updated_at": self.updated_at.isoformat() if self.updated_at else None,
+            "last_analyzed_at": self.last_analyzed_at.isoformat() if self.last_analyzed_at else None,
+        }
+
+
+class BackupRecord(Base):
+    """备份记录"""
+    __tablename__ = "backup_records"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+
+    # 备份信息
+    backup_type = Column(String(50), nullable=False)  # full, incremental, strategies_only, etc.
+    format = Column(String(20), nullable=False)  # json, sqlite
+
+    # 目标位置
+    destination = Column(String(50), nullable=False)  # local, github, aliyun_drive
+    file_path = Column(String(500), nullable=True)  # 本地路径或远程路径
+    github_repo = Column(String(200), nullable=True)
+    github_path = Column(String(200), nullable=True)
+    aliyun_folder = Column(String(200), nullable=True)
+
+    # 备份内容摘要
+    tables_included = Column(Text, nullable=True)  # JSON数组
+    record_counts = Column(Text, nullable=True)  # JSON: {"users": 10, "strategies": 13, ...}
+    file_size = Column(String(50), nullable=True)
+
+    # 状态
+    status = Column(String(20), default="pending")  # pending, running, completed, failed
+    error_message = Column(Text, nullable=True)
+
+    # 时间戳
+    created_at = Column(DateTime, default=datetime.utcnow)
+    completed_at = Column(DateTime, nullable=True)
+
+    # Relationships
+    user = relationship("User", foreign_keys=[user_id])
+
+    def __repr__(self):
+        return f"<BackupRecord {self.backup_type} {self.destination}>"
+
+    def to_dict(self):
+        import json
+        return {
+            "id": self.id,
+            "user_id": self.user_id,
+            "backup_type": self.backup_type,
+            "format": self.format,
+            "destination": self.destination,
+            "file_path": self.file_path,
+            "github_repo": self.github_repo,
+            "github_path": self.github_path,
+            "aliyun_folder": self.aliyun_folder,
+            "tables_included": json.loads(self.tables_included) if self.tables_included else [],
+            "record_counts": json.loads(self.record_counts) if self.record_counts else {},
+            "file_size": self.file_size,
+            "status": self.status,
+            "error_message": self.error_message,
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+            "completed_at": self.completed_at.isoformat() if self.completed_at else None,
+        }
+
+
+# ==================== New Model CRUD Functions ====================
+
+def create_batch_backtest_job(
+    db,
+    user_id: int,
+    ticker: str,
+    start_date: str,
+    end_date: str,
+    initial_capital: float = 100000,
+    trading_frequency: str = "daily"
+) -> BatchBacktestJob:
+    """创建批量回测任务"""
+    job = BatchBacktestJob(
+        user_id=user_id,
+        ticker=ticker.upper(),
+        start_date=start_date,
+        end_date=end_date,
+        initial_capital=str(initial_capital),
+        trading_frequency=trading_frequency,
+        status="pending"
+    )
+    db.add(job)
+    db.commit()
+    db.refresh(job)
+    return job
+
+
+def get_batch_backtest_job(db, job_id: int) -> Optional[BatchBacktestJob]:
+    """获取批量回测任务"""
+    return db.query(BatchBacktestJob).filter(BatchBacktestJob.id == job_id).first()
+
+
+def get_user_batch_backtest_jobs(db, user_id: int, limit: int = 50):
+    """获取用户的批量回测任务列表"""
+    return db.query(BatchBacktestJob)\
+        .filter(BatchBacktestJob.user_id == user_id)\
+        .order_by(BatchBacktestJob.created_at.desc())\
+        .limit(limit)\
+        .all()
+
+
+def update_batch_backtest_job(db, job: BatchBacktestJob, **kwargs) -> BatchBacktestJob:
+    """更新批量回测任务"""
+    for key, value in kwargs.items():
+        if hasattr(job, key):
+            setattr(job, key, value)
+    db.commit()
+    db.refresh(job)
+    return job
+
+
+def create_ai_simulation_session(
+    db,
+    user_id: int,
+    ticker: str,
+    strategy_id: int,
+    duration_days: int = 14,
+    initial_capital: float = 100000,
+    check_interval: str = "daily"
+) -> AISimulationSession:
+    """创建AI模拟交易会话"""
+    session = AISimulationSession(
+        user_id=user_id,
+        ticker=ticker.upper(),
+        strategy_id=strategy_id,
+        duration_days=duration_days,
+        start_date=datetime.utcnow().strftime('%Y-%m-%d'),
+        initial_capital=str(initial_capital),
+        check_interval=check_interval,
+        current_value=str(initial_capital),
+        status="active"
+    )
+    db.add(session)
+    db.commit()
+    db.refresh(session)
+    return session
+
+
+def get_ai_simulation_session(db, session_id: int) -> Optional[AISimulationSession]:
+    """获取AI模拟交易会话"""
+    return db.query(AISimulationSession).filter(AISimulationSession.id == session_id).first()
+
+
+def get_user_ai_simulation_sessions(db, user_id: int, status: str = None, limit: int = 50):
+    """获取用户的AI模拟交易会话列表"""
+    query = db.query(AISimulationSession).filter(AISimulationSession.user_id == user_id)
+    if status:
+        query = query.filter(AISimulationSession.status == status)
+    return query.order_by(AISimulationSession.created_at.desc()).limit(limit).all()
+
+
+def get_active_ai_simulation_sessions(db):
+    """获取所有活跃的AI模拟交易会话"""
+    return db.query(AISimulationSession).filter(AISimulationSession.status == "active").all()
+
+
+def update_ai_simulation_session(db, session: AISimulationSession, **kwargs) -> AISimulationSession:
+    """更新AI模拟交易会话"""
+    for key, value in kwargs.items():
+        if hasattr(session, key):
+            setattr(session, key, value)
+    session.updated_at = datetime.utcnow()
+    db.commit()
+    db.refresh(session)
+    return session
+
+
+def create_stock_strategy_match(
+    db,
+    user_id: int,
+    ticker: str,
+    strategy_id: int,
+    strategy_name: str,
+    strategy_type: str,
+    backtest_id: int = None,
+    simulation_id: int = None,
+    backtest_win_rate: float = None,
+    backtest_return: float = None,
+    simulation_win_rate: float = None,
+    simulation_return: float = None,
+    confidence_score: float = None,
+    match_grade: str = None
+) -> StockStrategyMatch:
+    """创建股票-策略匹配记录"""
+    match = StockStrategyMatch(
+        user_id=user_id,
+        ticker=ticker.upper(),
+        strategy_id=strategy_id,
+        strategy_name=strategy_name,
+        strategy_type=strategy_type,
+        backtest_id=backtest_id,
+        simulation_id=simulation_id,
+        backtest_win_rate=str(backtest_win_rate) if backtest_win_rate else None,
+        backtest_return=str(backtest_return) if backtest_return else None,
+        simulation_win_rate=str(simulation_win_rate) if simulation_win_rate else None,
+        simulation_return=str(simulation_return) if simulation_return else None,
+        confidence_score=str(confidence_score) if confidence_score else None,
+        match_grade=match_grade
+    )
+    db.add(match)
+    db.commit()
+    db.refresh(match)
+    return match
+
+
+def get_stock_strategy_matches(db, user_id: int, ticker: str = None, limit: int = 100):
+    """获取用户的股票-策略匹配列表"""
+    query = db.query(StockStrategyMatch)\
+        .filter(StockStrategyMatch.user_id == user_id)\
+        .filter(StockStrategyMatch.is_active == True)
+    if ticker:
+        query = query.filter(StockStrategyMatch.ticker == ticker.upper())
+    return query.order_by(StockStrategyMatch.confidence_score.desc()).limit(limit).all()
+
+
+def get_stock_personality(db, ticker: str, user_id: int = None) -> Optional[StockPersonality]:
+    """获取股票性格"""
+    query = db.query(StockPersonality).filter(StockPersonality.ticker == ticker.upper())
+    if user_id:
+        query = query.filter(StockPersonality.user_id == user_id)
+    return query.first()
+
+
+def create_or_update_stock_personality(
+    db,
+    ticker: str,
+    user_id: int = None,
+    **kwargs
+) -> StockPersonality:
+    """创建或更新股票性格"""
+    import json
+    personality = get_stock_personality(db, ticker, user_id)
+
+    if personality:
+        for key, value in kwargs.items():
+            if hasattr(personality, key):
+                if isinstance(value, (list, dict)):
+                    setattr(personality, key, json.dumps(value))
+                else:
+                    setattr(personality, key, value)
+        personality.updated_at = datetime.utcnow()
+        personality.last_analyzed_at = datetime.utcnow()
+    else:
+        personality = StockPersonality(
+            ticker=ticker.upper(),
+            user_id=user_id,
+            last_analyzed_at=datetime.utcnow()
+        )
+        for key, value in kwargs.items():
+            if hasattr(personality, key):
+                if isinstance(value, (list, dict)):
+                    setattr(personality, key, json.dumps(value))
+                else:
+                    setattr(personality, key, value)
+        db.add(personality)
+
+    db.commit()
+    db.refresh(personality)
+    return personality
+
+
+def create_backup_record(
+    db,
+    backup_type: str,
+    format: str,
+    destination: str,
+    user_id: int = None,
+    file_path: str = None,
+    github_repo: str = None,
+    github_path: str = None,
+    aliyun_folder: str = None
+) -> BackupRecord:
+    """创建备份记录"""
+    record = BackupRecord(
+        user_id=user_id,
+        backup_type=backup_type,
+        format=format,
+        destination=destination,
+        file_path=file_path,
+        github_repo=github_repo,
+        github_path=github_path,
+        aliyun_folder=aliyun_folder,
+        status="pending"
+    )
+    db.add(record)
+    db.commit()
+    db.refresh(record)
+    return record
+
+
+def get_backup_records(db, user_id: int = None, limit: int = 50):
+    """获取备份记录列表"""
+    query = db.query(BackupRecord)
+    if user_id:
+        query = query.filter(BackupRecord.user_id == user_id)
+    return query.order_by(BackupRecord.created_at.desc()).limit(limit).all()
+
+
+def update_backup_record(db, record: BackupRecord, **kwargs) -> BackupRecord:
+    """更新备份记录"""
+    for key, value in kwargs.items():
+        if hasattr(record, key):
+            setattr(record, key, value)
+    db.commit()
+    db.refresh(record)
+    return record
+
+
 # Initialize database on module load
 init_db()
 

@@ -100,6 +100,72 @@
             </div>
         </div>
 
+        <!-- AI Simulation Section -->
+        <div class="bg-gradient-to-r from-green-900/50 to-blue-900/50 rounded-lg p-4 border border-green-500/30 mb-6">
+            <div class="flex items-center justify-between mb-4">
+                <div class="flex items-center gap-2">
+                    <i class="fas fa-robot text-2xl text-green-400"></i>
+                    <h2 class="text-lg font-semibold">AI策略模拟交易</h2>
+                    <span class="text-sm text-gray-400">- 自动执行策略信号</span>
+                </div>
+                <button onclick="toggleAISimulationPanel()" class="text-gray-400 hover:text-white">
+                    <i id="aiPanelToggle" class="fas fa-chevron-down"></i>
+                </button>
+            </div>
+
+            <div id="aiSimulationPanel">
+                <!-- Active Simulations -->
+                <div class="mb-4">
+                    <div class="flex items-center justify-between mb-2">
+                        <h3 class="text-sm font-semibold text-gray-300">活跃的模拟交易</h3>
+                        <button onclick="loadAISimulations()" class="text-xs text-blue-400 hover:text-blue-300">
+                            <i class="fas fa-sync-alt mr-1"></i>刷新
+                        </button>
+                    </div>
+                    <div id="activeSimulations" class="space-y-2">
+                        <div class="text-gray-500 text-sm text-center py-2">暂无活跃的模拟交易</div>
+                    </div>
+                </div>
+
+                <!-- Start New Simulation -->
+                <div class="border-t border-gray-700 pt-4">
+                    <h3 class="text-sm font-semibold text-gray-300 mb-3">启动新模拟</h3>
+                    <div class="grid grid-cols-1 md:grid-cols-5 gap-3">
+                        <div>
+                            <label class="block text-xs text-gray-400 mb-1">股票代码</label>
+                            <input type="text" id="simTicker" placeholder="AAPL"
+                                class="w-full bg-gray-700 border border-gray-600 rounded px-2 py-1.5 text-sm focus:border-green-500 focus:outline-none uppercase">
+                        </div>
+                        <div>
+                            <label class="block text-xs text-gray-400 mb-1">选择策略</label>
+                            <select id="simStrategy" class="w-full bg-gray-700 border border-gray-600 rounded px-2 py-1.5 text-sm focus:border-green-500 focus:outline-none">
+                                <option value="">加载中...</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="block text-xs text-gray-400 mb-1">模拟时长</label>
+                            <select id="simDuration" class="w-full bg-gray-700 border border-gray-600 rounded px-2 py-1.5 text-sm focus:border-green-500 focus:outline-none">
+                                <option value="7">1周</option>
+                                <option value="14" selected>2周</option>
+                                <option value="30">1个月</option>
+                                <option value="60">2个月</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="block text-xs text-gray-400 mb-1">初始资金</label>
+                            <input type="number" id="simCapital" value="100000" step="10000"
+                                class="w-full bg-gray-700 border border-gray-600 rounded px-2 py-1.5 text-sm focus:border-green-500 focus:outline-none">
+                        </div>
+                        <div class="flex items-end">
+                            <button onclick="startAISimulation()" class="w-full bg-green-600 hover:bg-green-700 px-3 py-1.5 rounded text-sm font-semibold transition-colors">
+                                <i class="fas fa-play mr-1"></i>启动模拟
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
         <!-- Portfolio Analysis -->
         <div class="bg-gray-800 rounded-lg p-4 border border-gray-700 mb-6">
             <div class="flex items-center justify-between mb-3">
@@ -337,8 +403,209 @@
         document.addEventListener('DOMContentLoaded', async () => {
             await loadUserInfo();
             await loadPortfolios();
+            await loadStrategiesForSimulation();
+            await loadAISimulations();
             initChart();
         });
+
+        // ==================== AI Simulation Functions ====================
+
+        function toggleAISimulationPanel() {
+            const panel = document.getElementById('aiSimulationPanel');
+            const icon = document.getElementById('aiPanelToggle');
+            panel.classList.toggle('hidden');
+            icon.classList.toggle('fa-chevron-down');
+            icon.classList.toggle('fa-chevron-up');
+        }
+
+        async function loadStrategiesForSimulation() {
+            try {
+                const response = await fetch('/api/strategies');
+                if (!response.ok) return;
+
+                const data = await response.json();
+                const select = document.getElementById('simStrategy');
+                select.innerHTML = data.strategies.map(s =>
+                    `<option value="${s.id}">${s.name}</option>`
+                ).join('');
+            } catch (error) {
+                console.error('Error loading strategies:', error);
+            }
+        }
+
+        async function loadAISimulations() {
+            try {
+                const response = await fetch('/api/simulations');
+                if (!response.ok) return;
+
+                const data = await response.json();
+                const container = document.getElementById('activeSimulations');
+
+                const activeSessions = data.sessions.filter(s => s.status === 'active');
+
+                if (activeSessions.length === 0) {
+                    container.innerHTML = '<div class="text-gray-500 text-sm text-center py-2">暂无活跃的模拟交易</div>';
+                    return;
+                }
+
+                container.innerHTML = activeSessions.map(session => {
+                    const winRate = session.total_trades > 0
+                        ? ((session.winning_trades / (session.winning_trades + session.losing_trades)) * 100).toFixed(1)
+                        : '0';
+                    const pnlClass = session.total_pnl >= 0 ? 'text-green-400' : 'text-red-400';
+                    const progress = ((session.current_day / session.duration_days) * 100).toFixed(0);
+
+                    return `
+                        <div class="bg-gray-700/50 rounded p-3">
+                            <div class="flex items-center justify-between mb-2">
+                                <div class="flex items-center gap-2">
+                                    <span class="font-bold text-blue-400">${session.ticker}</span>
+                                    <span class="text-xs bg-green-600/30 text-green-400 px-2 py-0.5 rounded">运行中</span>
+                                </div>
+                                <div class="flex gap-2">
+                                    <button onclick="checkSimulationSignal(${session.id})" class="text-xs text-blue-400 hover:text-blue-300">
+                                        <i class="fas fa-bolt"></i> 检查信号
+                                    </button>
+                                    <button onclick="stopAISimulation(${session.id})" class="text-xs text-red-400 hover:text-red-300">
+                                        <i class="fas fa-stop"></i> 停止
+                                    </button>
+                                </div>
+                            </div>
+                            <div class="grid grid-cols-4 gap-2 text-xs text-center">
+                                <div>
+                                    <div class="text-gray-400">进度</div>
+                                    <div class="font-semibold">${session.current_day}/${session.duration_days}天</div>
+                                </div>
+                                <div>
+                                    <div class="text-gray-400">交易</div>
+                                    <div class="font-semibold">${session.total_trades}笔</div>
+                                </div>
+                                <div>
+                                    <div class="text-gray-400">胜率</div>
+                                    <div class="font-semibold">${winRate}%</div>
+                                </div>
+                                <div>
+                                    <div class="text-gray-400">盈亏</div>
+                                    <div class="font-semibold ${pnlClass}">$${parseFloat(session.total_pnl || 0).toFixed(2)}</div>
+                                </div>
+                            </div>
+                            <div class="mt-2 bg-gray-600 rounded-full h-1.5">
+                                <div class="bg-green-500 h-1.5 rounded-full" style="width: ${progress}%"></div>
+                            </div>
+                            <div class="mt-1 text-xs text-gray-400">
+                                持仓: ${session.current_position === 'cash' ? '空仓' : session.current_position}
+                                ${session.shares > 0 ? `| ${session.shares}股 @ $${parseFloat(session.entry_price || 0).toFixed(2)}` : ''}
+                            </div>
+                        </div>
+                    `;
+                }).join('');
+
+            } catch (error) {
+                console.error('Error loading AI simulations:', error);
+            }
+        }
+
+        async function startAISimulation() {
+            const ticker = document.getElementById('simTicker').value.trim().toUpperCase();
+            const strategyId = document.getElementById('simStrategy').value;
+            const duration = parseInt(document.getElementById('simDuration').value);
+            const capital = parseFloat(document.getElementById('simCapital').value);
+
+            if (!ticker) {
+                alert('请输入股票代码');
+                return;
+            }
+
+            if (!strategyId) {
+                alert('请选择策略');
+                return;
+            }
+
+            try {
+                const response = await fetch('/api/simulation/start', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({
+                        ticker: ticker,
+                        strategy_id: parseInt(strategyId),
+                        duration_days: duration,
+                        initial_capital: capital,
+                        check_interval: 'daily'
+                    })
+                });
+
+                if (!response.ok) {
+                    const err = await response.json();
+                    throw new Error(err.detail || '启动失败');
+                }
+
+                const data = await response.json();
+                alert(`模拟交易已启动！\n会话ID: ${data.session_id}\n\n系统将每日自动检查信号并执行交易。`);
+
+                document.getElementById('simTicker').value = '';
+                await loadAISimulations();
+
+            } catch (error) {
+                console.error('Error starting simulation:', error);
+                alert('启动模拟交易失败: ' + error.message);
+            }
+        }
+
+        async function checkSimulationSignal(sessionId) {
+            try {
+                const response = await fetch(`/api/simulation/${sessionId}/check`, {
+                    method: 'POST'
+                });
+
+                if (!response.ok) {
+                    const err = await response.json();
+                    throw new Error(err.detail || '检查失败');
+                }
+
+                const data = await response.json();
+                let message = `信号: ${data.signal}\n`;
+                message += `操作: ${data.action_taken || '无操作'}\n`;
+                message += `当前价格: $${data.current_price?.toFixed(2) || '-'}\n`;
+                message += `当前价值: $${data.current_value?.toFixed(2) || '-'}`;
+
+                if (data.status === 'completed') {
+                    message += '\n\n模拟交易已完成！';
+                }
+
+                alert(message);
+                await loadAISimulations();
+
+            } catch (error) {
+                console.error('Error checking signal:', error);
+                alert('检查信号失败: ' + error.message);
+            }
+        }
+
+        async function stopAISimulation(sessionId) {
+            if (!confirm('确定要停止这个模拟交易吗？')) {
+                return;
+            }
+
+            try {
+                const response = await fetch(`/api/simulation/${sessionId}/stop`, {
+                    method: 'POST'
+                });
+
+                if (!response.ok) {
+                    const err = await response.json();
+                    throw new Error(err.detail || '停止失败');
+                }
+
+                alert('模拟交易已停止');
+                await loadAISimulations();
+
+            } catch (error) {
+                console.error('Error stopping simulation:', error);
+                alert('停止模拟交易失败: ' + error.message);
+            }
+        }
+
+        // ==================== Original Functions ====================
 
         async function loadUserInfo() {
             try {

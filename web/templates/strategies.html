@@ -77,6 +77,102 @@
             </div>
         </div>
 
+        <!-- Batch Backtest Section -->
+        <div class="bg-gradient-to-r from-purple-900/50 to-blue-900/50 rounded-xl p-6 mb-6 border border-purple-500/30">
+            <div class="flex items-center gap-3 mb-4">
+                <i class="fas fa-layer-group text-2xl text-purple-400"></i>
+                <h2 class="text-xl font-bold">批量策略回测</h2>
+                <span class="text-sm text-gray-400">- 对一只股票测试所有策略，找出最佳策略</span>
+            </div>
+            <div class="grid grid-cols-1 md:grid-cols-5 gap-4">
+                <div>
+                    <label class="block text-sm font-medium text-gray-300 mb-2">股票代码</label>
+                    <input type="text" id="batchTicker" placeholder="AAPL"
+                        class="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-2 focus:ring-2 focus:ring-purple-500 uppercase">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-300 mb-2">开始日期</label>
+                    <input type="date" id="batchStartDate"
+                        class="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-2 focus:ring-2 focus:ring-purple-500">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-300 mb-2">结束日期</label>
+                    <input type="date" id="batchEndDate"
+                        class="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-2 focus:ring-2 focus:ring-purple-500">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-300 mb-2">交易频率</label>
+                    <select id="batchFrequency" class="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-2 focus:ring-2 focus:ring-purple-500">
+                        <option value="daily">按天交易</option>
+                        <option value="monthly">按月交易</option>
+                    </select>
+                </div>
+                <div class="flex items-end">
+                    <button onclick="startBatchBacktest()" class="w-full bg-purple-600 hover:bg-purple-700 px-6 py-2 rounded-lg font-semibold transition-colors">
+                        <i class="fas fa-rocket mr-2"></i>开始批量回测
+                    </button>
+                </div>
+            </div>
+
+            <!-- Batch Results -->
+            <div id="batchResultsContainer" class="hidden mt-6">
+                <div class="flex items-center justify-between mb-4">
+                    <h3 class="text-lg font-semibold">回测结果排名（按胜率）</h3>
+                    <div id="batchProgress" class="text-sm text-gray-400">
+                        <i class="fas fa-spinner fa-spin mr-1"></i>
+                        <span id="batchProgressText">进行中...</span>
+                    </div>
+                </div>
+
+                <!-- Best Strategy Card -->
+                <div id="bestStrategyCard" class="hidden bg-gradient-to-r from-yellow-900/50 to-orange-900/50 rounded-xl p-4 mb-4 border border-yellow-500/30">
+                    <div class="flex items-center gap-2 mb-2">
+                        <i class="fas fa-crown text-yellow-400"></i>
+                        <span class="font-bold text-yellow-400">最佳策略</span>
+                    </div>
+                    <div class="grid grid-cols-4 gap-4 text-center">
+                        <div>
+                            <div class="text-2xl font-bold" id="bestStrategyName">-</div>
+                            <div class="text-sm text-gray-400">策略名称</div>
+                        </div>
+                        <div>
+                            <div class="text-2xl font-bold text-green-400" id="bestWinRate">-</div>
+                            <div class="text-sm text-gray-400">胜率</div>
+                        </div>
+                        <div>
+                            <div class="text-2xl font-bold text-blue-400" id="bestReturn">-</div>
+                            <div class="text-sm text-gray-400">总收益</div>
+                        </div>
+                        <div>
+                            <button onclick="startSimulationFromBest()" class="bg-green-600 hover:bg-green-700 px-4 py-2 rounded-lg font-semibold transition-colors">
+                                <i class="fas fa-play mr-1"></i>开始模拟交易
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Results Table -->
+                <div class="overflow-x-auto">
+                    <table class="w-full">
+                        <thead>
+                            <tr class="text-left text-gray-400 border-b border-gray-700">
+                                <th class="py-2 px-3">排名</th>
+                                <th class="py-2 px-3">策略名称</th>
+                                <th class="py-2 px-3">胜率</th>
+                                <th class="py-2 px-3">总收益</th>
+                                <th class="py-2 px-3">夏普比率</th>
+                                <th class="py-2 px-3">最大回撤</th>
+                                <th class="py-2 px-3">操作</th>
+                            </tr>
+                        </thead>
+                        <tbody id="batchResultsTable">
+                            <!-- Results will be inserted here -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
         <!-- Strategies Grid -->
         <div id="strategiesContainer" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
             <!-- Strategies will be loaded here -->
@@ -157,6 +253,183 @@
     <script>
         let strategies = [];
         let currentBacktestTaskId = null;
+        let currentBatchJobId = null;
+        let bestBatchStrategy = null;
+
+        // ==================== 批量回测功能 ====================
+
+        // 初始化批量回测日期
+        function initBatchDates() {
+            const endDate = new Date();
+            const startDate = new Date();
+            startDate.setFullYear(startDate.getFullYear() - 1);
+
+            document.getElementById('batchEndDate').value = endDate.toISOString().split('T')[0];
+            document.getElementById('batchStartDate').value = startDate.toISOString().split('T')[0];
+        }
+
+        async function startBatchBacktest() {
+            const ticker = document.getElementById('batchTicker').value.trim().toUpperCase();
+            const startDate = document.getElementById('batchStartDate').value;
+            const endDate = document.getElementById('batchEndDate').value;
+            const frequency = document.getElementById('batchFrequency').value;
+
+            if (!ticker) {
+                alert('请输入股票代码');
+                return;
+            }
+
+            if (!startDate || !endDate) {
+                alert('请选择日期范围');
+                return;
+            }
+
+            try {
+                const response = await fetch('/api/backtest/batch', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({
+                        ticker: ticker,
+                        start_date: startDate,
+                        end_date: endDate,
+                        initial_capital: 100000,
+                        trading_frequency: frequency
+                    })
+                });
+
+                if (!response.ok) throw new Error('启动批量回测失败');
+
+                const data = await response.json();
+                currentBatchJobId = data.job_id;
+
+                // 显示结果区域
+                document.getElementById('batchResultsContainer').classList.remove('hidden');
+                document.getElementById('bestStrategyCard').classList.add('hidden');
+                document.getElementById('batchResultsTable').innerHTML = '';
+                document.getElementById('batchProgressText').textContent = '正在启动回测...';
+
+                // 开始轮询状态
+                pollBatchBacktestStatus();
+
+            } catch (error) {
+                console.error('Error starting batch backtest:', error);
+                alert('启动批量回测失败: ' + error.message);
+            }
+        }
+
+        async function pollBatchBacktestStatus() {
+            if (!currentBatchJobId) return;
+
+            try {
+                const response = await fetch(`/api/backtest/batch/${currentBatchJobId}`);
+                if (!response.ok) throw new Error('查询状态失败');
+
+                const data = await response.json();
+
+                // 更新进度
+                const progressText = document.getElementById('batchProgressText');
+                if (data.status === 'running') {
+                    progressText.innerHTML = `<i class="fas fa-spinner fa-spin mr-1"></i> 进度: ${data.progress}% (${data.completed_strategies || 0}/${data.total_strategies || '?'})`;
+                    setTimeout(pollBatchBacktestStatus, 2000);
+                } else if (data.status === 'completed') {
+                    progressText.innerHTML = '<i class="fas fa-check text-green-400 mr-1"></i> 完成';
+                    displayBatchResults(data);
+                } else if (data.status === 'failed') {
+                    progressText.innerHTML = '<i class="fas fa-times text-red-400 mr-1"></i> 失败';
+                    alert('批量回测失败: ' + (data.error_message || '未知错误'));
+                } else {
+                    setTimeout(pollBatchBacktestStatus, 2000);
+                }
+
+            } catch (error) {
+                console.error('Error polling batch status:', error);
+                setTimeout(pollBatchBacktestStatus, 3000);
+            }
+        }
+
+        function displayBatchResults(data) {
+            const tableBody = document.getElementById('batchResultsTable');
+            const results = data.all_results || [];
+
+            // 显示最佳策略
+            if (data.best_strategy) {
+                bestBatchStrategy = data.best_strategy;
+                document.getElementById('bestStrategyCard').classList.remove('hidden');
+                document.getElementById('bestStrategyName').textContent = data.best_strategy.name || data.best_strategy.strategy_name || '-';
+                document.getElementById('bestWinRate').textContent = (data.best_strategy.win_rate || 0).toFixed(1) + '%';
+                document.getElementById('bestReturn').textContent = (data.best_strategy.total_return || 0).toFixed(2) + '%';
+            }
+
+            // 显示结果表格
+            tableBody.innerHTML = results.map((result, index) => {
+                const hasError = result.error;
+                const rowClass = hasError ? 'text-gray-500' : '';
+                const winRateClass = result.win_rate >= 50 ? 'text-green-400' : 'text-red-400';
+                const returnClass = result.total_return >= 0 ? 'text-green-400' : 'text-red-400';
+
+                return `
+                    <tr class="border-b border-gray-700 hover:bg-gray-700/50 ${rowClass}">
+                        <td class="py-3 px-3">
+                            ${index === 0 ? '<i class="fas fa-crown text-yellow-400"></i>' : index + 1}
+                        </td>
+                        <td class="py-3 px-3">${result.strategy_name || '-'}</td>
+                        <td class="py-3 px-3 ${winRateClass}">${hasError ? '-' : (result.win_rate || 0).toFixed(1) + '%'}</td>
+                        <td class="py-3 px-3 ${returnClass}">${hasError ? '-' : (result.total_return || 0).toFixed(2) + '%'}</td>
+                        <td class="py-3 px-3">${hasError ? '-' : (result.sharpe_ratio || 0).toFixed(2)}</td>
+                        <td class="py-3 px-3 text-red-400">${hasError ? '-' : (result.max_drawdown || 0).toFixed(2) + '%'}</td>
+                        <td class="py-3 px-3">
+                            ${hasError ? '<span class="text-red-400 text-sm">错误</span>' : `
+                                <button onclick="startSimulationForStrategy(${result.strategy_id}, '${document.getElementById('batchTicker').value}')"
+                                    class="text-green-400 hover:text-green-300 text-sm">
+                                    <i class="fas fa-play mr-1"></i>模拟
+                                </button>
+                            `}
+                        </td>
+                    </tr>
+                `;
+            }).join('');
+        }
+
+        async function startSimulationFromBest() {
+            if (!bestBatchStrategy) {
+                alert('请先完成批量回测');
+                return;
+            }
+
+            const ticker = document.getElementById('batchTicker').value.trim().toUpperCase();
+            await startSimulationForStrategy(bestBatchStrategy.id || bestBatchStrategy.strategy_id, ticker);
+        }
+
+        async function startSimulationForStrategy(strategyId, ticker) {
+            if (!confirm(`确定要对 ${ticker} 使用该策略开始2周模拟交易吗？`)) {
+                return;
+            }
+
+            try {
+                const response = await fetch('/api/simulation/start', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({
+                        ticker: ticker,
+                        strategy_id: strategyId,
+                        duration_days: 14,
+                        initial_capital: 100000,
+                        check_interval: 'daily'
+                    })
+                });
+
+                if (!response.ok) throw new Error('启动模拟交易失败');
+
+                const data = await response.json();
+                alert(`模拟交易已启动！会话ID: ${data.session_id}\n\n系统将每日自动检查信号并执行交易。\n您可以在"模拟交易"页面查看进度。`);
+
+            } catch (error) {
+                console.error('Error starting simulation:', error);
+                alert('启动模拟交易失败: ' + error.message);
+            }
+        }
+
+        // ==================== 原有功能 ====================
 
         async function loadStrategies() {
             try {
@@ -789,6 +1062,7 @@
         // Initialize
         document.addEventListener('DOMContentLoaded', () => {
             loadStrategies();
+            initBatchDates();
         });
     </script>
 </body>
