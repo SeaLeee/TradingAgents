@@ -452,10 +452,17 @@ def drop_db():
     print("All tables dropped")
 
 
+def get_session_local():
+    """Get current SessionLocal - ensures we always use the latest one after reinit"""
+    global SessionLocal
+    return SessionLocal
+
+
 @contextmanager
 def get_db():
     """Get database session context manager"""
-    db = SessionLocal()
+    session_factory = get_session_local()
+    db = session_factory()
     try:
         yield db
     finally:
@@ -464,7 +471,8 @@ def get_db():
 
 def get_db_session():
     """Get database session (for FastAPI dependency injection)"""
-    db = SessionLocal()
+    session_factory = get_session_local()
+    db = session_factory()
     try:
         yield db
     finally:
