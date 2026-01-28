@@ -11,22 +11,33 @@ from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, relationship
 from contextlib import contextmanager
 
-# Determine database URL
-# Railway provides DATABASE_URL for PostgreSQL
-# For local development, use SQLite
-DATABASE_URL = os.getenv("DATABASE_URL")
 
-if DATABASE_URL:
-    # Railway PostgreSQL URL starts with postgres://, but SQLAlchemy needs postgresql://
-    if DATABASE_URL.startswith("postgres://"):
-        DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
-    engine = create_engine(DATABASE_URL, pool_pre_ping=True)
-else:
-    # Local SQLite database
-    DB_PATH = os.path.join(os.path.dirname(__file__), "data", "tradingagents.db")
-    os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
-    DATABASE_URL = f"sqlite:///{DB_PATH}"
-    engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False})
+def get_database_url():
+    """Get database URL from environment, with proper format conversion"""
+    url = os.getenv("DATABASE_URL")
+    if url:
+        # Railway PostgreSQL URL starts with postgres://, but SQLAlchemy needs postgresql://
+        if url.startswith("postgres://"):
+            url = url.replace("postgres://", "postgresql://", 1)
+        return url
+    else:
+        # Local SQLite database
+        db_path = os.path.join(os.path.dirname(__file__), "data", "tradingagents.db")
+        os.makedirs(os.path.dirname(db_path), exist_ok=True)
+        return f"sqlite:///{db_path}"
+
+
+def create_db_engine(url: str):
+    """Create database engine based on URL type"""
+    if url.startswith("postgresql://"):
+        return create_engine(url, pool_pre_ping=True)
+    else:
+        return create_engine(url, connect_args={"check_same_thread": False})
+
+
+# Initialize with current environment
+DATABASE_URL = get_database_url()
+engine = create_db_engine(DATABASE_URL)
 
 # Create session factory
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
@@ -416,10 +427,23 @@ class SimDailySnapshot(Base):
 
 # ============== Database Functions ==============
 
-def init_db():
-    """Initialize database - create all tables"""
+def init_db(force_reinit: bool = False):
+    """Initialize database - create all tables
+
+    Args:
+        force_reinit: If True, reinitialize engine from current environment variables
+    """
+    global DATABASE_URL, engine, SessionLocal
+
+    if force_reinit:
+        # Re-read environment variable (useful when env vars set after module load)
+        DATABASE_URL = get_database_url()
+        engine = create_db_engine(DATABASE_URL)
+        SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+
     Base.metadata.create_all(bind=engine)
-    print(f"Database initialized: {DATABASE_URL}")
+    db_type = "PostgreSQL" if "postgresql" in DATABASE_URL else "SQLite"
+    print(f"Database initialized ({db_type}): {DATABASE_URL[:60]}..." if len(DATABASE_URL) > 60 else f"Database initialized ({db_type}): {DATABASE_URL}")
 
 
 def drop_db():
@@ -2238,12 +2262,6 @@ def update_backup_record(db, record: BackupRecord, **kwargs) -> BackupRecord:
     return record
 
 
-# Initialize database on module load
-init_db()
-
-# Initialize default strategies on first run
-try:
-    with get_db() as db:
-        init_default_strategies(db)
-except Exception as e:
-    print(f"Note: Could not initialize default strategies: {e}")
+# Note: Database initialization is now handled by app.py startup event
+# to ensure environment variables (like DATABASE_URL) are properly loaded first.
+# See app.py startup_event() for the initialization logic.

@@ -202,6 +202,30 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+
+# ============== Application Startup ==============
+@app.on_event("startup")
+async def startup_event():
+    """Initialize database on application startup"""
+    from .database import init_db, get_database_url, init_default_strategies, get_db
+
+    # Force reinit to pick up any environment variables set after module load
+    db_url = get_database_url()
+    db_type = "PostgreSQL" if "postgresql" in db_url else "SQLite"
+    print(f"Starting application with {db_type} database")
+
+    # Initialize database with force_reinit to ensure we use current env vars
+    init_db(force_reinit=True)
+
+    # Initialize default strategies
+    try:
+        with get_db() as db:
+            init_default_strategies(db)
+        print("Default strategies initialized")
+    except Exception as e:
+        print(f"Note: Could not initialize default strategies: {e}")
+
+
 # Store analysis results and status
 analysis_tasks = {}
 
