@@ -207,7 +207,29 @@ app.add_middleware(
 @app.on_event("startup")
 async def startup_event():
     """Initialize database on application startup"""
+    import os
     from .database import init_db, get_database_url, init_default_strategies, get_db
+
+    # Debug: Print all database-related environment variables
+    print("=" * 50)
+    print("DATABASE CONFIGURATION DEBUG:")
+    raw_db_url = os.getenv("DATABASE_URL")
+    print(f"  DATABASE_URL exists: {raw_db_url is not None}")
+    if raw_db_url:
+        # Mask password for security
+        if '@' in raw_db_url:
+            prefix = raw_db_url.split('@')[0].split(':')[0] + "://***:***@"
+            suffix = raw_db_url.split('@')[1]
+            print(f"  DATABASE_URL value: {prefix}{suffix[:40]}...")
+        else:
+            print(f"  DATABASE_URL value: {raw_db_url[:50]}...")
+    else:
+        print("  DATABASE_URL is NOT SET - will use SQLite")
+
+    # List all env vars containing DATABASE or POSTGRES
+    db_vars = [k for k in os.environ.keys() if 'DATABASE' in k.upper() or 'POSTGRES' in k.upper()]
+    print(f"  Related env vars: {db_vars}")
+    print("=" * 50)
 
     # Force reinit to pick up any environment variables set after module load
     db_url = get_database_url()
