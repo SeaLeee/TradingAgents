@@ -1030,8 +1030,37 @@ async def analyze_page(request: Request):
 
 @app.get("/api/health")
 async def health_check():
-    """Health check endpoint (public)"""
-    return {"status": "healthy", "timestamp": datetime.now().isoformat()}
+    """Health check endpoint (public) with database info"""
+    from .database import DATABASE_URL, engine
+    from sqlalchemy import text
+
+    db_info = {
+        "type": "postgresql" if "postgresql" in DATABASE_URL else "sqlite",
+        "connected": False,
+        "tables": []
+    }
+
+    try:
+        with engine.connect() as conn:
+            db_info["connected"] = True
+            # Get table count
+            if "postgresql" in DATABASE_URL:
+                result = conn.execute(text(
+                    "SELECT table_name FROM information_schema.tables WHERE table_schema = 'public'"
+                ))
+            else:
+                result = conn.execute(text(
+                    "SELECT name FROM sqlite_master WHERE type='table'"
+                ))
+            db_info["tables"] = [row[0] for row in result.fetchall()]
+    except Exception as e:
+        db_info["error"] = str(e)
+
+    return {
+        "status": "healthy",
+        "timestamp": datetime.now().isoformat(),
+        "database": db_info
+    }
 
 
 # ============== Stock Data APIs ==============
