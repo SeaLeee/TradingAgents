@@ -185,8 +185,12 @@ def run_monthly_backtest(
     执行月度回测
 
     将日度数据重采样为月度数据后执行回测
+    这样可以模拟每月只交易一次的情况
     """
     import yfinance as yf
+    from .backtest_engine import (
+        STRATEGY_REGISTRY, STRATEGY_ALIASES, apply_default_params
+    )
 
     try:
         # 下载日度数据
@@ -205,32 +209,50 @@ def run_monthly_backtest(
             'Volume': 'sum'
         }).dropna()
 
-        if df_monthly.empty:
-            return {"error": "Insufficient data for monthly resampling"}
+        if len(df_monthly) < 5:
+            return {"error": "Insufficient data for monthly resampling (need at least 5 months)"}
 
-        # 使用月度数据执行回测
-        # 由于backtest_engine期望日度数据，我们需要调整策略参数
+        # 获取策略
+        resolved_type = STRATEGY_ALIASES.get(strategy_type, strategy_type)
+        strategy = STRATEGY_REGISTRY.get(resolved_type)
+        if not strategy:
+            return {"error": f"Unknown strategy type: {strategy_type}"}
+
+        # 调整参数为月度（窗口期缩小）
         adjusted_params = params.copy() if params else {}
 
-        # 调整窗口参数为月度（通常除以约21个交易日）
-        for key in ['short_window', 'long_window', 'ma_period', 'lookback_period', 'period', 'rsi_period']:
-            if key in adjusted_params:
-                original = adjusted_params[key]
-                # 月度数据点更少，需要缩小窗口
-                adjusted_params[key] = max(2, original // 4)
+        # 月度数据窗口调整映射
+        window_adjustments = {
+            'short_window': lambda x: max(2, x // 10),  # 20 -> 2
+            'long_window': lambda x: max(3, x // 10),   # 50 -> 5
+            'ma_period': lambda x: max(2, x // 10),
+            'lookback_period': lambda x: max(2, x // 10),
+            'period': lambda x: max(2, x // 10),
+            'rsi_period': lambda x: max(3, x // 3),     # 14 -> 5
+            'fast_period': lambda x: max(2, x // 3),    # 12 -> 4
+            'slow_period': lambda x: max(3, x // 3),    # 26 -> 9
+            'signal_period': lambda x: max(2, x // 3),  # 9 -> 3
+        }
 
-        # 执行回测
-        result = run_strategy_backtest(
-            strategy_type=strategy_type,
-            ticker=ticker,
-            start_date=start_date,
-            end_date=end_date,
-            initial_capital=initial_capital,
-            params=adjusted_params
-        )
+        for key, adjuster in window_adjustments.items():
+            if key in adjusted_params:
+                adjusted_params[key] = adjuster(adjusted_params[key])
+
+        # 合并默认参数
+        merged_params = apply_default_params(adjusted_params, strategy["defaults"])
+
+        # 再次调整合并后的参数（针对默认值）
+        for key, adjuster in window_adjustments.items():
+            if key in merged_params and key not in adjusted_params:
+                merged_params[key] = adjuster(merged_params[key])
+
+        # 直接使用月度数据执行策略处理函数
+        handler = strategy["handler"]
+        result = handler(df_monthly, initial_capital, **merged_params)
 
         # 标记为月度回测
         result["trading_frequency"] = "monthly"
+        result["data_points"] = len(df_monthly)
 
         return result
 

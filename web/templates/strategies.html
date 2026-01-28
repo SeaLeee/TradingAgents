@@ -30,9 +30,10 @@
                 </a>
                 <a href="/strategy-library" class="text-gray-300 hover:text-white">策略库</a>
                 <a href="/strategy-editor" class="text-gray-300 hover:text-white">策略编辑器</a>
+                <a href="/stock-library" class="text-gray-300 hover:text-white">股票适配库</a>
                 <a href="/reports" class="text-gray-300 hover:text-white">报告</a>
                 <a href="/signals" class="text-gray-300 hover:text-white">信号</a>
-                <a href="/data-hub" class="text-gray-300 hover:text-white">数据</a>
+                <a href="/data-hub" class="text-gray-300 hover:text-white">数据备份</a>
                 <span class="text-gray-500">|</span>
                 <h1 class="text-xl font-bold">量化策略回测平台</h1>
             </div>
@@ -853,6 +854,19 @@
                 </div>
                 
                 <!-- 图表区域 -->
+                <div class="grid grid-cols-1 gap-6 mb-6">
+                    <!-- 价格与买卖点图表 -->
+                    <div class="bg-gray-700/30 rounded-xl p-4">
+                        <h3 class="text-lg font-semibold mb-3"><i class="fas fa-chart-bar mr-2 text-green-400"></i>价格走势与买卖点</h3>
+                        <canvas id="priceTradeChart" height="150"></canvas>
+                        <div class="flex justify-center gap-6 mt-3 text-sm">
+                            <span class="flex items-center gap-2"><span class="w-3 h-3 bg-blue-500 rounded-full"></span> 价格</span>
+                            <span class="flex items-center gap-2"><span class="w-0 h-0 border-l-4 border-r-4 border-b-8 border-l-transparent border-r-transparent border-b-green-500"></span> 买入点</span>
+                            <span class="flex items-center gap-2"><span class="w-0 h-0 border-l-4 border-r-4 border-t-8 border-l-transparent border-r-transparent border-t-red-500"></span> 卖出点</span>
+                        </div>
+                    </div>
+                </div>
+
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
                     <div class="bg-gray-700/30 rounded-xl p-4">
                         <h3 class="text-lg font-semibold mb-3"><i class="fas fa-chart-line mr-2 text-blue-400"></i>收益曲线</h3>
@@ -863,6 +877,45 @@
                         <canvas id="drawdownChart" height="120"></canvas>
                     </div>
                 </div>
+
+                <!-- 交易记录明细 -->
+                ${(results.trade_history && results.trade_history.length > 0) ? `
+                <div class="bg-gray-700/30 rounded-xl p-4 mb-6">
+                    <h3 class="text-lg font-semibold mb-3"><i class="fas fa-list mr-2 text-purple-400"></i>交易记录明细</h3>
+                    <div class="overflow-x-auto max-h-64 overflow-y-auto">
+                        <table class="w-full text-sm">
+                            <thead class="sticky top-0 bg-gray-800">
+                                <tr class="text-gray-400 border-b border-gray-600">
+                                    <th class="text-left py-2 px-2">日期</th>
+                                    <th class="text-left py-2 px-2">操作</th>
+                                    <th class="text-right py-2 px-2">价格</th>
+                                    <th class="text-right py-2 px-2">股数</th>
+                                    <th class="text-right py-2 px-2">金额</th>
+                                    <th class="text-right py-2 px-2">盈亏</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${results.trade_history.map(t => `
+                                    <tr class="border-b border-gray-700 hover:bg-gray-700/50">
+                                        <td class="py-2 px-2">${t.date}</td>
+                                        <td class="py-2 px-2">
+                                            <span class="px-2 py-1 rounded text-xs font-semibold ${t.action === 'buy' ? 'bg-green-900/50 text-green-400' : 'bg-red-900/50 text-red-400'}">
+                                                ${t.action === 'buy' ? '买入' : '卖出'}
+                                            </span>
+                                        </td>
+                                        <td class="text-right py-2 px-2">$${t.price.toFixed(2)}</td>
+                                        <td class="text-right py-2 px-2">${t.shares}</td>
+                                        <td class="text-right py-2 px-2">$${t.value.toFixed(2)}</td>
+                                        <td class="text-right py-2 px-2 ${t.pnl > 0 ? 'text-green-400' : t.pnl < 0 ? 'text-red-400' : 'text-gray-400'}">
+                                            ${t.pnl !== undefined ? (t.pnl > 0 ? '+' : '') + '$' + t.pnl.toFixed(2) : '-'}
+                                        </td>
+                                    </tr>
+                                `).join('')}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+                ` : ''}
                 
                 <!-- 详细统计 -->
                 <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
@@ -921,6 +974,11 @@
             
             // Draw equity curve chart
             if (results.equity_curve && results.equity_curve.length > 0) {
+                // 绘制价格与买卖点图表
+                if (results.trade_history && results.trade_history.length > 0) {
+                    drawPriceTradeChart(results);
+                }
+
                 const ctx = document.getElementById('equityChart').getContext('2d');
                 new Chart(ctx, {
                     type: 'line',
@@ -976,7 +1034,117 @@
             
             document.getElementById('resultsModal').classList.remove('hidden');
         }
-        
+
+        function drawPriceTradeChart(results) {
+            const canvas = document.getElementById('priceTradeChart');
+            if (!canvas) return;
+
+            const trades = results.trade_history || [];
+            const equityCurve = results.equity_curve || [];
+
+            // 从交易记录中提取价格数据
+            const buyTrades = trades.filter(t => t.action === 'buy');
+            const sellTrades = trades.filter(t => t.action === 'sell');
+
+            // 创建价格时间序列（使用equity curve的长度作为时间轴）
+            const labels = equityCurve.map((_, i) => `Day ${i + 1}`);
+
+            // 创建买入和卖出点的数据
+            const buyPoints = new Array(labels.length).fill(null);
+            const sellPoints = new Array(labels.length).fill(null);
+
+            // 如果有交易历史，用交易价格；否则用equity curve
+            // 为简化，使用equity curve来展示价值变化
+            const priceData = equityCurve;
+
+            // 标记买卖点（基于交易次数估算位置）
+            if (trades.length > 0) {
+                const interval = Math.floor(labels.length / (trades.length + 1));
+                trades.forEach((trade, idx) => {
+                    const position = Math.min((idx + 1) * interval, labels.length - 1);
+                    if (trade.action === 'buy') {
+                        buyPoints[position] = priceData[position];
+                    } else {
+                        sellPoints[position] = priceData[position];
+                    }
+                });
+            }
+
+            const ctx = canvas.getContext('2d');
+            new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: labels,
+                    datasets: [
+                        {
+                            label: '组合价值',
+                            data: priceData,
+                            borderColor: '#3b82f6',
+                            backgroundColor: 'rgba(59, 130, 246, 0.1)',
+                            fill: true,
+                            tension: 0.4,
+                            pointRadius: 0
+                        },
+                        {
+                            label: '买入点',
+                            data: buyPoints,
+                            borderColor: '#22c55e',
+                            backgroundColor: '#22c55e',
+                            pointStyle: 'triangle',
+                            pointRadius: 10,
+                            pointHoverRadius: 12,
+                            showLine: false
+                        },
+                        {
+                            label: '卖出点',
+                            data: sellPoints,
+                            borderColor: '#ef4444',
+                            backgroundColor: '#ef4444',
+                            pointStyle: 'triangle',
+                            rotation: 180,
+                            pointRadius: 10,
+                            pointHoverRadius: 12,
+                            showLine: false
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: true,
+                    plugins: {
+                        legend: { display: false },
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    if (context.dataset.label === '买入点' && context.raw !== null) {
+                                        return '买入: $' + context.raw.toLocaleString();
+                                    }
+                                    if (context.dataset.label === '卖出点' && context.raw !== null) {
+                                        return '卖出: $' + context.raw.toLocaleString();
+                                    }
+                                    if (context.dataset.label === '组合价值') {
+                                        return '价值: $' + context.raw.toLocaleString();
+                                    }
+                                    return context.raw;
+                                }
+                            }
+                        }
+                    },
+                    scales: {
+                        y: {
+                            beginAtZero: false,
+                            ticks: { color: '#9ca3af', callback: v => '$' + v.toLocaleString() },
+                            grid: { color: 'rgba(255, 255, 255, 0.1)' }
+                        },
+                        x: {
+                            ticks: { color: '#9ca3af', maxTicksLimit: 10 },
+                            grid: { color: 'rgba(255, 255, 255, 0.1)' }
+                        }
+                    }
+                }
+            });
+        }
+
         function calculateDrawdowns(equityCurve) {
             if (!equityCurve || equityCurve.length === 0) return [];
             let runningMax = equityCurve[0];
