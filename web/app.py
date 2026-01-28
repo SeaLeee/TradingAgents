@@ -1087,6 +1087,35 @@ async def health_check():
     }
 
 
+@app.get("/api/debug/env")
+async def debug_env():
+    """Debug endpoint to check environment variables (public, temporary)"""
+    import os
+
+    # Check for database-related environment variables
+    db_url = os.getenv("DATABASE_URL")
+
+    # Mask sensitive parts of the URL for security
+    if db_url:
+        # Show only the beginning and type
+        if "postgresql" in db_url or "postgres" in db_url:
+            masked_url = f"postgresql://***@{db_url.split('@')[-1][:30]}..." if '@' in db_url else "postgresql://..."
+        else:
+            masked_url = db_url[:50] + "..." if len(db_url) > 50 else db_url
+    else:
+        masked_url = None
+
+    # List all env var names that contain DATABASE or POSTGRES (just names, not values)
+    db_related_vars = [key for key in os.environ.keys() if 'DATABASE' in key.upper() or 'POSTGRES' in key.upper()]
+
+    return {
+        "DATABASE_URL_exists": db_url is not None,
+        "DATABASE_URL_preview": masked_url,
+        "database_related_env_vars": db_related_vars,
+        "hint": "If DATABASE_URL_exists is false, the variable is not set correctly in Railway"
+    }
+
+
 # ============== Stock Data APIs ==============
 @app.get("/api/stock/{ticker}")
 async def get_stock_info(request: Request, ticker: str):
