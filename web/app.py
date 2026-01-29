@@ -30,6 +30,17 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from tradingagents.graph.trading_graph import TradingAgentsGraph
 from tradingagents.default_config import DEFAULT_CONFIG
 
+# Import backend API routers
+try:
+    from backend.app.api import market
+except ImportError:
+    try:
+        sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "backend"))
+        from app.api import market
+    except ImportError:
+        market = None
+        print("Warning: Could not import market API router")
+
 # Import database and auth modules - handle both package and direct imports
 try:
     from .database import (get_db, init_db, get_user_by_id, can_user_analyze, save_analysis,
@@ -81,6 +92,10 @@ app = FastAPI(
 
 # Store backtest tasks
 app.backtest_tasks = {}
+
+# Register backend API routers
+if market:
+    app.include_router(market.router)
 
 # ============== Authentication Configuration ==============
 # Get credentials from environment variables (fallback for password login)
@@ -1066,12 +1081,26 @@ async def analyze_page(request: Request):
     token = get_session_token(request)
     if not verify_session(token):
         return RedirectResponse(url="/login", status_code=302)
-    
+
     html_path = os.path.join(os.path.dirname(__file__), "templates", "index.html")
     if os.path.exists(html_path):
         with open(html_path, "r", encoding="utf-8") as f:
             return HTMLResponse(content=f.read())
     return HTMLResponse(content=get_default_html())
+
+
+@app.get("/market", response_class=HTMLResponse)
+async def market_page(request: Request):
+    """Serve the market observation page (protected)"""
+    token = get_session_token(request)
+    if not verify_session(token):
+        return RedirectResponse(url="/login", status_code=302)
+
+    html_path = os.path.join(os.path.dirname(__file__), "templates", "market.html")
+    if os.path.exists(html_path):
+        with open(html_path, "r", encoding="utf-8") as f:
+            return HTMLResponse(content=f.read())
+    return RedirectResponse(url="/dashboard", status_code=302)
 
 
 @app.get("/api/health")
