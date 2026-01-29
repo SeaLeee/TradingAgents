@@ -6,7 +6,7 @@ Supports both SQLite (local) and PostgreSQL (production)
 import os
 from datetime import datetime
 from typing import Optional
-from sqlalchemy import create_engine, Column, Integer, String, DateTime, Text, Boolean, ForeignKey
+from sqlalchemy import create_engine, Column, Integer, BigInteger, String, DateTime, Text, Boolean, ForeignKey
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, relationship
 from contextlib import contextmanager
@@ -51,9 +51,9 @@ Base = declarative_base()
 class User(Base):
     """User model - stores user information from GitHub OAuth"""
     __tablename__ = "users"
-    
+
     id = Column(Integer, primary_key=True, index=True)
-    github_id = Column(Integer, unique=True, index=True, nullable=False)
+    github_id = Column(BigInteger, unique=True, index=True, nullable=False)  # BigInteger for password login hashes
     username = Column(String(100), unique=True, index=True, nullable=False)
     email = Column(String(255), nullable=True)
     avatar_url = Column(String(500), nullable=True)
@@ -441,9 +441,36 @@ def init_db(force_reinit: bool = False):
         engine = create_db_engine(DATABASE_URL)
         SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
+    # Run migrations for PostgreSQL
+    if "postgresql" in DATABASE_URL:
+        _run_postgresql_migrations(engine)
+
     Base.metadata.create_all(bind=engine)
     db_type = "PostgreSQL" if "postgresql" in DATABASE_URL else "SQLite"
     print(f"Database initialized ({db_type}): {DATABASE_URL[:60]}..." if len(DATABASE_URL) > 60 else f"Database initialized ({db_type}): {DATABASE_URL}")
+
+
+def _run_postgresql_migrations(eng):
+    """Run necessary migrations for PostgreSQL compatibility"""
+    from sqlalchemy import text
+
+    try:
+        with eng.connect() as conn:
+            # Check if users table exists and github_id column type
+            result = conn.execute(text("""
+                SELECT data_type FROM information_schema.columns
+                WHERE table_name = 'users' AND column_name = 'github_id'
+            """))
+            row = result.fetchone()
+
+            if row and row[0] == 'integer':
+                # Need to alter column to bigint
+                print("Migrating users.github_id from INTEGER to BIGINT...")
+                conn.execute(text("ALTER TABLE users ALTER COLUMN github_id TYPE BIGINT"))
+                conn.commit()
+                print("Migration completed: users.github_id is now BIGINT")
+    except Exception as e:
+        print(f"Migration check/run: {e}")
 
 
 def drop_db():
